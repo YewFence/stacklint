@@ -1,0 +1,189 @@
+[settings]
+lockfile = true
+env_shell_expand = true
+minimum_release_age = "3d"
+
+[tools]
+# https://go.dev/
+go = "1"
+# https://nodejs.org/
+node = "26"
+# https://pnpm.io/
+pnpm = "11"
+# https://golangci-lint.run/
+golangci-lint = "2"
+# https://github.com/suzuki-shunsuke/nllint
+"go:github.com/suzuki-shunsuke/nllint/cmd/nllint" = "1"
+# https://github.com/suzuki-shunsuke/pinact
+pinact = "4"
+# https://github.com/crate-ci/typos
+typos = "1.48.0"
+betterleaks = "1"
+actionlint = "1"
+
+[vars]
+nllint_excludes = ""
+# example: exclude file
+# nllint_excludes = "':(top,exclude)file'"
+
+[env]
+# the minimum release age of github actions in days
+PINACT_MIN_AGE = "3"
+PINACT_GITHUB_TOKEN = { value = "${MISE_GITHUB_TOKEN:-}", redact = true }
+
+[tasks."mod:tidy"]
+description = "Tidy Go module dependencies"
+run = "go mod tidy"
+
+[tasks."mod:tidy:check"]
+description = "Check whether Go module dependencies are tidy"
+run = "go mod tidy -diff"
+
+[tasks."deps:update"]
+description = "Update Go dependencies and tidy modules"
+run = "go get -u ./... && go mod tidy"
+
+[tasks.test]
+description = "Run Go tests"
+run = "go test -v ./..."
+
+[tasks."fmt:check"]
+description = "Check Go code formatting"
+raw = true
+run = "golangci-lint fmt -E gofmt --diff"
+
+[tasks."fmt:fix"]
+description = "Fix Go code formatting"
+raw = true
+run = "golangci-lint fmt -E gofmt"
+
+[tasks.lint]
+description = "Run Go lint checks"
+raw = true
+run = "golangci-lint run -E asciicheck"
+
+[tasks."leaks:check"]
+description = "Run betterleaks checks"
+run = '''
+if jj root >/dev/null 2>&1; then
+    jj diff --git 2>/dev/null | betterleaks stdin --redact --no-banner
+else
+    betterleaks git --redact --no-banner
+fi
+'''
+
+[tasks."typos:check"]
+description = "Run Typos Lint"
+run = "typos"
+
+[tasks."typos:fix"]
+description = "Fix Typos Lint"
+run = "typos --write-changes"
+
+[tasks."newline:check"]
+description = "Check final newlines and surrounding whitespace in tracked text files"
+shell = "bash -c"
+run = '''
+set -o pipefail
+if jj root >/dev/null 2>&1; then
+    jj --ignore-working-copy file list -T 'path ++ "\0"' | xargs -0 nllint --trim-space
+else
+    git grep -Ilz '' -- . {{ vars.nllint_excludes }} | xargs -0 nllint --trim-space
+fi
+'''
+
+[tasks."newline:fix"]
+description = "Fix final newlines and surrounding whitespace in tracked text files"
+shell = "bash -c"
+run = '''
+set -o pipefail
+if jj root >/dev/null 2>&1; then
+    jj --ignore-working-copy file list -T 'path ++ "\0"' | xargs -0 nllint --fix --trim-space
+else
+    git grep -Ilz '' -- . {{ vars.nllint_excludes }} | xargs -0 nllint --fix --trim-space
+fi
+'''
+
+[tasks.check]
+description = """
+Run read-only checks for Go modules, newlines, typos, formatting, GitHub Actions, lint, build, and tests"""
+run = [
+  { tasks = [ "mod:tidy:check", "newline:check", "typos:check", "build:check" ] },
+  { task = "leaks:check" },
+  { task = "actions:check" },
+  { task = "lint" },
+  { task = "test" }
+]
+alias = "c"
+
+[tasks.fix]
+description = "Fix Go modules, newlines, typos, and formatting"
+run = [
+  { task = "mod:tidy" },
+  { task = "newline:fix" },
+  { task = "typos:fix" },
+  { task = "fmt:fix" }
+]
+alias = "f"
+
+[tasks.cli]
+description = "Run the CLI"
+run = "go run ./cmd/stacklint"
+
+[tasks.'cli:install']
+description = "Install the CLI into the local Go bin directory"
+run = 'go install -trimpath -ldflags="-X main.version=${BUILD_VERSION:-dev}" ./cmd/stacklint'
+
+[tasks.build]
+description = "Build the CLI executable"
+run = 'go build -trimpath -ldflags="-s -w -X main.version=${BUILD_VERSION:-dev}" -o "${BUILD_OUTPUT_DIR:-bin}/" ./cmd/stacklint'
+
+[tasks.'docs:install']
+description = "Install documentation site dependencies"
+dir = "docs"
+run = "pnpm install"
+
+[tasks.'docs:lock']
+description = "Generate the documentation lockfile without installing dependencies"
+dir = "docs"
+run = "pnpm install --lockfile-only"
+
+[tasks.'docs:install:locked']
+description = "Install documentation dependencies from the committed lockfile"
+dir = "docs"
+run = "pnpm install --frozen-lockfile"
+
+[tasks.'docs:dev']
+description = "Start the VitePress documentation site"
+depends = ["docs:install:locked"]
+dir = "docs"
+run = "pnpm run dev"
+
+[tasks.'docs:build']
+description = "Build the VitePress documentation site"
+depends = ["docs:install:locked"]
+dir = "docs"
+run = "pnpm run build"
+
+[tasks.'docs:preview']
+description = "Preview the VitePress documentation site"
+depends = ["docs:install:locked"]
+dir = "docs"
+run = "pnpm run preview"
+
+[tasks."build:check"]
+description = "Check whether the CLI builds"
+run = "go test -run '^$' ./cmd/..."
+
+[tasks."actions:check"]
+description = "Run actionlint"
+depends = ["actions:pin-offline:check"]
+run = "actionlint .github/workflows/*.yml"
+
+[tasks.'actions:update']
+description = "Update GitHub Action versions and pin to commit hashes"
+run = "pinact run --update"
+
+[tasks.'actions:pin-offline:check']
+description = "Check GitHub Action versions and pin to commit hashes"
+run = "unset PINACT_MIN_AGE && pinact run --fix=false --no-api"

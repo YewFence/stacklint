@@ -1,0 +1,11 @@
+/dist/
+/bin/
+*.test
+/docs/node_modules/
+/docs/.vitepress/cache/
+/docs/.vitepress/dist/
+
+.env
+.env.local
+
+mise.local.toml
