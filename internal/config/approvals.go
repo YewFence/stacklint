@@ -79,7 +79,7 @@ type decodedApprovals struct {
 }
 
 func decodeApprovals(configDir string) (*decodedApprovals, error) {
-	path := filepath.Join(configDir, "approvals.toml")
+	path := filepath.Join(configDir, ApprovalsFileName)
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return &decodedApprovals{}, nil

@@ -73,6 +73,16 @@ func Parse(image string) (Reference, *Violation) {
 	return ref, &Violation{Reason: "is not pinned to a sha256 digest", Approvable: true}
 }
 
+// Registry returns the registry host of a repository (as written in the
+// Compose file), defaulting unqualified names to docker.io.
+func Registry(repository string) string {
+	named, err := reference.ParseNormalizedNamed(repository)
+	if err != nil {
+		return "docker.io"
+	}
+	return reference.Domain(named)
+}
+
 // Approval is a validated [[image]] approval entry.
 type Approval struct {
 	Repository string

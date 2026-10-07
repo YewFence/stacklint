@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -80,6 +81,50 @@ type ImagesConfig struct {
 	Retries                int      `toml:"retries"`
 }
 
+// Defaults for unset images settings, matching the original Python tooling.
+const (
+	DefaultImagesConcurrency            = 8
+	DefaultImagesPerRegistryConcurrency = 4
+	DefaultImagesTimeout                = 30 * time.Second
+	DefaultImagesRetries                = 2
+)
+
+// ConcurrencyOrDefault returns the global registry query concurrency.
+func (c ImagesConfig) ConcurrencyOrDefault() int {
+	if c.Concurrency > 0 {
+		return c.Concurrency
+	}
+	return DefaultImagesConcurrency
+}
+
+// PerRegistryConcurrencyOrDefault returns the per-registry query concurrency.
+func (c ImagesConfig) PerRegistryConcurrencyOrDefault() int {
+	if c.PerRegistryConcurrency > 0 {
+		return c.PerRegistryConcurrency
+	}
+	return DefaultImagesPerRegistryConcurrency
+}
+
+// TimeoutOrDefault returns the per-query timeout.
+func (c ImagesConfig) TimeoutOrDefault() time.Duration {
+	if c.Timeout == "" {
+		return DefaultImagesTimeout
+	}
+	duration, err := time.ParseDuration(c.Timeout)
+	if err != nil {
+		return DefaultImagesTimeout
+	}
+	return duration
+}
+
+// RetriesOrDefault returns the retry count for retryable registry failures.
+func (c ImagesConfig) RetriesOrDefault() int {
+	if c.Retries > 0 {
+		return c.Retries
+	}
+	return DefaultImagesRetries
+}
+
 var (
 	ErrLoad     = errors.New("stacklint configuration load failed")
 	ErrValidate = errors.New("stacklint configuration invalid")
@@ -132,6 +177,11 @@ func (c *Config) validate() error {
 	}
 	if err := requireNoDuplicates("images.private_repositories", c.Images.PrivateRepositories); err != nil {
 		return err
+	}
+	if c.Images.Timeout != "" {
+		if _, err := time.ParseDuration(c.Images.Timeout); err != nil {
+			return fmt.Errorf("images.timeout: %q is not a valid duration: %v", c.Images.Timeout, err)
+		}
 	}
 	for i, m := range c.Modules {
 		if m.Compose == "" {

@@ -276,10 +276,7 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 
 ## 待定问题
 
-- regclient 能否直接读取 `DOCKER_CONFIG` 下的标准 Docker 配置，以兼容现有的私有凭据流程。
-- Crow 中 digest 检查目前由固定 plugin 镜像执行，以隔离 registry 凭据与 PR 代码；切换后的 plugin 形态和信任边界需要重新设计。
-- 覆盖模板与不同 Docker Compose plugin 版本的 dotenv 读取差异边界；当前赋值使用 compose-go dotenv 往返验证。
-- 输出 JSON 的 schema 与版本策略。
+无。原四项已定稿：regclient `config` 包直接支持标准 `DOCKER_CONFIG`（含 cred helper，机制已确认，凭据流程在接入时实机验证）；Crow plugin 信任边界移出 stacklint，归 stacks 仓库迁移议题；dotenv 差异由往返验证兜底、外部差异由 stacks 仓库 CI 一致性校验承担，README 记录分工；JSON 输出加 `version` 字段、1.0 前不承诺稳定。详见 M4 决策。
 
 ## 已实现决策（M1）
 
@@ -308,3 +305,21 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 - `approvals.toml` 校验与既有 compose-checks 对齐：未知键、缺字段、非法规则/端口/变量、目标文件不存在、重复目标均报错；已固定 digest 的镜像批准视为冗余并在过期批准检查中报错。过期批准只在批准引用的全部 Compose 文件都在本次范围内时判断。
 - 卷命名扫描单文件 yaml.v3 节点（include 图内全部文件），渲染后必须有非空 `name` 且在源文件中显式写出。
 - M3 验收：stacks 仓库 38 个 stack base 组合与 compose-checks 输出一致（0 诊断）；变体 overlay 不在 oracle 覆盖范围，alloy-agent postgres 变体因 `POSTGRES_DATA_SOURCE_NAMES` 只有生成输出提供值而渲染失败，迁移时需为其登记 `ci_env_files`。
+
+## 已实现决策（M4 设计定稿）
+
+- 按 Git ref 加载抽为通用内部包 `internal/refload`：go-git 纯 Go 读 `.git` 对象库（jj 共存仓库走其 git 后端），物化整树到临时目录，不碰工作区。接口通用，但 CLI 只在 `images digests --base` 与 `images list --ref` 暴露，不给 check/env 预设 `--ref`。
+- 策略单一来源：`stacklint.toml`/`approvals.toml` 永远取当前工作区版本，ref 只决定被加载的内容。digests 增量时额外解析基线 ref 的 `[images]` 段与 `approvals.toml` 的 `[[image]]` 条目做规范化语义比较（注释/重排不触发），变化则转全量。
+- 基线 ref 渲染失败 → 转全量并 warning（全量结果本身完整，不违反默认失败原则）。
+- `images list` 记录 = stack + variant + Compose 文件 + 服务 + 引用，确定性排序，不去重；位置信息本身就是交付价值。
+- JSON 输出带 `"version": 1`，1.0 前不承诺 schema 稳定。
+- digests 逐条进度走 stderr，结构化结果走 stdout。
+- regclient 凭证读取确认可行：`config` 包解析标准 `DOCKER_CONFIG` 与 cred helper。
+
+## 已实现决策（M4 实现回填）
+
+- `images list` / `images digests` 已实现；digests 增加 `--format text|json`（默认 text），JSON 形状为 `{version, mode, base, results, diagnostics, summary, exit_code}`，location 即 `images list` 的 Record。
+- refload 增加 `Resolve`/`IsAncestor`（go-git），供 `--ci crow` 的基线可用性与祖先校验；crow 语义与既有 oracle 一致（PR 取 `refs/remotes/origin/$CI_COMMIT_TARGET_BRANCH`，push 依赖 `CI_PREV_PIPELINE_STATUS`/`CI_PREV_COMMIT_SHA`，cron/manual 全量）。
+- registry 错误分类只用 regclient 结构化哨兵：`ErrNotFound`→not-found、`ErrHTTPUnauthorized`→authentication、`ErrHTTPRateLimit` 与其他 `ErrHTTPStatus`→retryable、其余（传输/超时）→retryable。regclient 不在错误中结构化携带 5xx 状态码，因此其他状态码一律按可重试处理：多试几次 4xx 无害，误判 5xx 为终态才会误报。重试次数与超时来自 `images.retries`/`images.timeout`，默认值 8/4/30s/2 与 oracle 一致；`images.timeout` 在配置加载时校验为合法 duration。
+- 与 oracle 的唯一分类差异：oracle 按文本正则提取 HTTP 状态码区分 5xx 与其他 4xx，stacklint 不解析文本，放弃该区分（见上）。
+- M4 验收：stacks 仓库全量 59 条引用实机验证通过；tag 漂移且 digest 存在报 warning，私有仓库无凭据 warning 跳过；`--base HEAD` 增量为空时不访问 registry；基线缺 `stacklint.toml` 或策略段变化自动转全量。

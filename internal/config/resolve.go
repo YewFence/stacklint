@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	FileName = "stacklint.toml"
-	EnvVar   = "STACKLINT_CONFIG_DIR"
+	FileName           = "stacklint.toml"
+	ApprovalsFileName  = "approvals.toml"
+	EnvVar             = "STACKLINT_CONFIG_DIR"
 )
 
 var (

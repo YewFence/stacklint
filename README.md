@@ -41,12 +41,14 @@ mise run cli:install
 stacklint --help
 stacklint version
 stacklint render stacks/example --format json
+stacklint check
 stacklint env generate stacks/example
-stacklint env check
 stacklint env check stacks/example --variant local --format json
+stacklint images list --format json
+stacklint images digests --base origin/main
 ```
 
-`render`, `env generate`, and `env check` are implemented. `check` and the `images` commands remain planned. The CLI embeds compose-go v2.16.1 and does not require Docker for environment analysis.
+All commands are implemented. Only `images digests` accesses the network; everything else works offline. The CLI embeds compose-go v2.16.1 and does not require Docker for analysis; no behavioral divergence from recent Docker Compose plugin versions is known. Because the embedded compose-go may differ from the Compose plugin on a deployment host, consumer repositories compare `stacklint render --format json` against `docker compose config --format json` in CI, and generated dotenv assignments are verified by round-tripping through the compose-go parser before being written.
 
 Repository policy comes from a root `stacklint.toml`. Environment templates support recursive includes and explicitly registered overlay variants; no adjacent overlay files are loaded implicitly. Generation requires explicit targets, while `env check` without targets checks all discovered stacks and registered variants. See the [requirements document](https://YewFence.github.io/stacklint/design/requirements) for configuration, supported input shapes, exemptions, and safety contracts.
 

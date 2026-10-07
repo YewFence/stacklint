@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -15,15 +14,4 @@ func resolveConfigDir(cmd *cobra.Command) (string, error) {
 		return "", fmt.Errorf("get working directory: %w", err)
 	}
 	return config.ResolveDir(configDir, workdir)
-}
-
-func notImplemented(cmd *cobra.Command, feature string) error {
-	dir, err := resolveConfigDir(cmd)
-	if err != nil {
-		if errors.Is(err, config.ErrNotFound) || errors.Is(err, config.ErrInvalid) {
-			return fmt.Errorf("configuration error: %w", err)
-		}
-		return err
-	}
-	return fmt.Errorf("%s is not implemented yet (config: %s)", feature, dir)
 }
