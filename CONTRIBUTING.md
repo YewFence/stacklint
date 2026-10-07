@@ -1,5 +1,8 @@
 # Development Guide
 
+> [!NOTE]
+> stacklint does not accept external pull requests — it is a personal tool that follows its author's workflow. This guide exists for the author and for anyone maintaining a fork (the license is MIT, fork away). Bug reports as issues are welcome.
+
 ## Requirements
 
 [mise](https://github.com/jdx/mise) is the only direct requirement, which is used for managing the other development tools.
