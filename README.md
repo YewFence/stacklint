@@ -40,14 +40,17 @@ mise run cli:install
 ```bash
 stacklint --help
 stacklint version
-stacklint check
+stacklint render stacks/example --format json
 stacklint env generate stacks/example
 stacklint env check
-stacklint images digests --full
-stacklint render stacks/example
+stacklint env check stacks/example --variant local --format json
 ```
 
-Most commands are not implemented yet. See the [requirements document](https://YewFence.github.io/stacklint/design/requirements) for planned features.
+`render`, `env generate`, and `env check` are implemented. `check` and the `images` commands remain planned. The CLI embeds compose-go v2.16.1 and does not require Docker for environment analysis.
+
+Repository policy comes from a root `stacklint.toml`. Environment templates support recursive includes and explicitly registered overlay variants; no adjacent overlay files are loaded implicitly. Generation requires explicit targets, while `env check` without targets checks all discovered stacks and registered variants. See the [requirements document](https://YewFence.github.io/stacklint/design/requirements) for configuration, supported input shapes, exemptions, and safety contracts.
+
+Include modules with an implicit `.env` produce a warning and retain compose-go's native loading behavior. Environment templates and diagnostics do not expose those values; `render` outputs a configuration view and is not a redaction mechanism.
 
 ## Documentation
 

@@ -22,7 +22,7 @@ stacklint 用 Go 直接复用 compose-go、`distribution/reference` 和 regclien
 ## 非目标
 
 - 不启动容器、不连接 Docker daemon、不拉取镜像层、不创建 Docker 资源。
-- 不读取部署环境的真实输入：不读进程环境参与插值，不读 `.env`、`.env.secrets` 等部署文件。
+- 不读进程环境参与插值，不自动加载主项目的 `.env`、`.env.secrets` 等部署文件。include 未声明 `env_file` 时允许 compose-go 原生读取模块目录的默认 `.env`，env 命令发现它会 warning 后继续；它不是批准的固定接线来源，其实际值不进入环境模板或 env 诊断。
 - 不替代运维主机上的运行时工具，不调用业务系统的 API。
 - 不生成 Compose 文件，不修改 Compose 行为。
 
@@ -30,6 +30,7 @@ stacklint 用 Go 直接复用 compose-go、`distribution/reference` 和 regclien
 
 - 仓库：包含 stack 的代码仓库，由配置目录确定根目录。
 - stack：一个部署单元，即部署根目录下包含主 Compose 文件的目录。
+- 变体：同一个 stack 的替代部署组合，由有序 Compose 文件列表定义；一次部署只选择其中一个组合，不把不同变体当作同时部署的 stack。每个 stack 隐式具有 `base` 基础组合。
 - 部署根目录：配置中声明的、在其下发现 stack 的目录，例如 `stacks/edge`。
 - 共享模块：不可独立部署、被 stack 通过 `include` 引用的 Compose 模块。
 - 静态渲染输入：检查时为插值提供值的受版本控制文件，例如 `.env.example`、`.env.ci` 和模块 CI 占位 env。
@@ -55,7 +56,7 @@ CLI 从一个配置目录读取全部策略，按以下优先级确定，命中�
 - `stacklint.toml`：仓库策略，必需。
 - `approvals.toml`：全部批准与豁免记录，可选；不存在等价于没有任何批准。
 
-`stacklint.toml` 中的 `repository.root` 相对配置目录解析，缺省为配置目录本身；其余所有路径都相对仓库根目录解析。未知键、错误类型、重复项均失败。
+`stacklint.toml` 中的 `repository.root` 相对配置目录解析，缺省为配置目录本身。部署根、模块 Compose、`env.include_env_files`、变体的 stack、files、ci_env_files 使用仓库相对路径；`render.env_files` 是各 stack 内的相对文件名，模块的 ci_env_file 相对模块 Compose 目录，wiring_file 相对引用模块的项目目录。env 输出必须是 stack 内的文件名，不能是部署 `.env` 或 `.env.secrets`。未知键、错误类型、重复项均失败。
 
 示意（以一个 stacks 仓库为例，字段名在实现时定稿）：
 
@@ -89,6 +90,17 @@ default_variable = "BIND_ADDRESS"
 
 [env]
 output = ".env.example"
+# 可选：除 module.wiring_file 外获准读取的 include 静态接线文件
+include_env_files = []
+
+[[env.variant]]
+stack = "stacks/edge/alloy-agent"
+name = "postgres"
+# 首个文件必须是 stack 的主 Compose 文件；顺序就是 compose-go 的合并顺序
+files = ["stacks/edge/alloy-agent/compose.yaml", "stacks/edge/alloy-agent/compose.postgres.yaml"]
+output = ".env.postgres.example"
+# 可选：追加进同一静态分析输入池；显式登记的文件必须存在
+ci_env_files = ["stacks/edge/alloy-agent/.env.ci.postgres"]
 
 [images]
 floating_tags = ["latest", "main"]
@@ -111,12 +123,12 @@ retries = 2
 
 ### 加载与渲染
 
-- 用 compose-go loader 加载 stack，渲染输入按 `render.env_files` 顺序叠加，再追加所有已注册模块的 CI 占位 env 作为最高优先级。模块 CI 占位 env 无条件加载，不依赖 include 图。
+- 用 compose-go loader 加载 stack；所有 `render.env_files` 与已注册模块的 `ci_env_file` 平铺注入同一项目环境，按配置顺序加载，不建立额外优先级层级。模块 CI 占位 env 无条件加载，不依赖 include 图。
 - include 自带的 `env_file`（例如模块 wiring 文件）保持 Compose 原生优先级，低于项目级输入。
 - 不读取进程环境，不加载项目目录下的 `.env`。
 - 启用全部 profile。
 - 同时提供两种视图：插值后的规范化模型，以及未插值的模型（部分规则需要读取原始插值表达式）。未插值视图通过 `LoadModelWithContext` 返回合并后的 YAML 字典，不解码为强类型以保留原始表达式。
-- 提供源文件关系：stack 实际引用的全部源文件（include 递归展开），以及每个服务、卷、字段来自哪个源文件。卷命名与 env 来源分组通过扫描单文件 yaml.v3 节点与模块 `env_group` 前缀实现，不做逐字段 diff 追踪。
+- 提供 stack 的源文件关系，包括递归 include 图；不追踪合并后每个服务、卷、字段来自哪个文件，不做逐字段 diff。卷命名和 env 注释、顺序扫描单文件 yaml.v3 节点，env 模块分组按 `env_group` 前缀，缺省回退到 required_environment.prefix。
 - 渲染失败的 stack 报告错误并继续检查其他 stack。
 
 ### 按 Git ref 加载
@@ -157,7 +169,13 @@ retries = 2
 
 ### `stacklint env generate <targets...>` / `stacklint env check [targets...]`
 
-从 Compose 生成每个 stack 的覆盖模板 `.env.example`，运行默认值只在 Compose 中维护。
+从 Compose 生成每个 stack 各组合的完整覆盖模板，基础输出缺省为 `.env.example`；每份模板独立使用，不是基础模板上的差量补充。运行默认值只在 Compose 中维护。两个命令支持 `--variant <name>` 和 `--format text|json`。
+
+目标选择：
+
+- 选中 stack 且不指定变体时处理其基础及全部已登记变体；`env check` 不给目标时处理全仓全部组合。
+- `--variant base` 只选基础，其他名称只选已登记组合；任一选中 stack 不具有所选变体就失败，不回退基础。
+- 不自动加载邻近 overlay。组合与输出名只从 `[[env.variant]]` 获取，名称 `base` 保留，同一 stack 的名称及输出文件名不得重复。
 
 输入发现：
 
@@ -179,25 +197,32 @@ retries = 2
 - 无条件必填输出为空赋值，并区分 `:?`（不得为空）与 `?`（允许为空）。
 - 无值透传输出为注释空入口，不把“未设置”变成空字符串。
 - 嵌套派生、条件分支、替代值、同字段重复引用等复杂情况保留完整原表达式和位置，不计算成固定值，也不把内层必填当成全局必填。例如 `${URL:-https://${DOMAIN:?...}}` 中的 `DOMAIN` 只在 `URL` 未设置时必填。
-- 同名变量在不同位置有不同的默认行为时生成失败。现有仓库没有这种写法，若出现，应当先统一 Compose。
-- 按源文件和首次出现顺序排列，同一字段内的变量按名称排序，来源参考放在末尾。
+- 同一组合的有效字段中，同名变量有不一致的简单默认行为时生成失败。明确的无条件必填约束与直接引用或无值透传合并，以必填约束为准。不同变体之间不比较默认值；overlay 已替换的旧默认值不算第二个有效默认值。
+- 按配置文件列表顺序访问，每个文件先自身，再按 include 声明顺序递归；同组内按源码首次出现顺序，同一字段变量按名称排序，模块前缀分组，来源参考放在末尾。
 - 赋值编码由 stacklint 实现，写出后必须用 compose-go 的 dotenv 解析器读回并与原值完全一致，否则失败。
 
 覆盖范围与豁免：
 
-- `env check` 不给目标时检查全部 stack。每个 stack 必须满足以下之一：已提交的 `.env.example` 与生成结果完全一致；或在 `approvals.toml` 中有一条 `[[env_exemption]]`。
+- 每个组合必须满足以下之一：已提交的模板与生成结果逐字节一致；或该 stack 在 `approvals.toml` 中有一条 `[[env_exemption]]`。豁免绑定整个 stack，覆盖基础及全部变体。
 - 豁免绑定 stack 目录，`kind` 为以下之一：
   - `env-file-passthrough`：服务级 `env_file` 透传项目 `.env`，示例需要承载上游应用的大规模接口。前提是 Compose 中确实存在这种透传；不再存在时过期。需要填写原因。
   - `upstream`：`.env.example` 同步自上游项目。需要填写原因和上游来源。
-  - `pending`：尚未迁移，或使用了暂不支持的形状（include、overlay 等）。不需要原因。
-- 豁免 stack 的 `.env.example` 带有生成头时报错，提示删除豁免或恢复手写文件。
-- `env generate` 必须显式给出目标，拒绝对豁免 stack 生成。生成在完整扫描成功后原子写入；拒绝符号链接；失败不覆盖已有文件。
-- `env check` 只读，不写任何文件。
+  - `pending`：尚未迁移，或使用了暂不支持的形状，例如 extends。不需要原因。
+- 豁免 stack 的任一被检查模板带有 stacklint 或原 compose-env 生成头时报错，提示删除豁免或恢复手写文件。
+- 全仓检查报告不存在的豁免目标，局部检查不报告范围外的目标过期；env-file-passthrough 的前提按选中组合验证。
+- `env generate` 必须显式给出目标，拒绝对豁免 stack 生成。先准备全部目标的分析结果、编码和输出安全检查；任一准备失败都不写。提交阶段逐文件原子替换，I/O 失败报告实际写入状态，不承诺跨文件事务。拒绝源 Compose、静态输入及输出的符号链接，不覆盖源输入文件。
+- `env check` 只读，不写任何文件；缺失或漂移退出 1，配置、用法或无法完成分析退出 2。
 
-多文件（后续阶段）：
+多文件：
 
-- include 的模块输入独立成组；受版本控制的 include `env_file` 固定接线值进入来源参考，不提供赋值入口。
-- overlay 的文件组合与输出名由命令或配置显式指定，不凭文件名猜测；补充模板以基础加 overlay 的有效合并结果为准。
+- 支持 include 短/长语法、递归 include、显式有序 overlay、YAML 锚点/merge key 和 Compose 的 `!reset` / `!override`。extends、label_file、其他未知标签和动态文件图形状明确失败。合并完全由 compose-go 完成，不复制或生成临时 Compose 文件图。
+- include 的 path、project_directory、env_file 路径必须固定；不接受远端 Compose 资源，不允许部署输入切换文件图。
+- 只有 `env.include_env_files` 和已注册模块 wiring_file 对应的 include 显式 env_file 可读取；不以 Git 跟踪状态推断授权。固定接线键只列提供文件，不提供赋值入口，不输出实际接线值；同名输入在不同 include 作用域来源不一致时失败。
+- 接线文件的外部依赖可以借用静态占位值完成 dotenv 求值，但真实依赖仍进入模板；它们有 `@env-source` 时只列来源参考。CI 占位值不算运行默认值，也不证明部署已提供该变量。不能缩写的接线依赖保守显示接线文件引用，不输出派生值。
+- env 分析复用 render 静态输入池并追加变体 ci_env_files，全部平铺加载；排除该 stack 所有生成输出，防止旧模板影响新模板。不读主项目部署环境或进程环境。
+- include 默认 `.env` 存在时 warning 后继续 compose-go 原生加载，不将其中的值认作模板默认或批准的接线来源。未插值模型也可能含这类值，因此模板内容只从源码表达式、说明和变量名产生，env 诊断抑制可能携带实际值的加载错误详情。
+- Compose 按文件先插值后合并。最终模型中消失但仍在合并前引用的变量单列加载阶段输入，原表达式和必填约束保留；不会因为 overlay 覆盖字段就漏掉加载要求。
+- `@env` 按变量名关联，文件图内的说明不会随字段覆盖而删除；不建立注释到最终字段的来源追踪。
 
 ### `stacklint images digests [--base <ref> | --full | --ci <provider>]`
 
@@ -238,7 +263,7 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 
 - 性能：全仓 `check` 与 `env check` 在 40 个 stack 规模下应在数秒内完成，不随插值表达式数量线性调用外部进程。
 - 确定性：相同输入产生字节一致的输出，所有集合按固定规则排序。
-- 安全：生成时只写目标 stack 的覆盖模板；不在输出或日志中打印凭据；registry 访问只发生在 `images digests`。
+- 安全：生成时只写目标 stack 的覆盖模板；env 生成和诊断不输出 CI、接线或隐式 include `.env` 的实际值；registry 访问只发生在 `images digests`。`render` 是配置视图输出，普通与未插值视图均可能携带环境解析值，不能把它当作凭据脱敏输出。
 - 测试：规则与生成逻辑以表驱动测试和 fixture 仓库覆盖；registry 通过注入 fake 测试，不访问真实网络；不弱化断言。
 
 ## 迁移计划
@@ -251,18 +276,23 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 
 ## 待定问题
 
-- compose-go 合并 include 和 overlay 后能否保留字段来源；不能时，卷命名与 env 来源分组需要单独读取源文件。
 - regclient 能否直接读取 `DOCKER_CONFIG` 下的标准 Docker 配置，以兼容现有的私有凭据流程。
 - Crow 中 digest 检查目前由固定 plugin 镜像执行，以隔离 registry 凭据与 PR 代码；切换后的 plugin 形态和信任边界需要重新设计。
-- 覆盖模板中 dotenv 赋值的编码规则，以及与 Docker 实际读取行为的差异边界。
+- 覆盖模板与不同 Docker Compose plugin 版本的 dotenv 读取差异边界；当前赋值使用 compose-go dotenv 往返验证。
 - 输出 JSON 的 schema 与版本策略。
 
-##已实现决策（M1）
+## 已实现决策（M1）
 
--配置文件位于仓库根 `stacklint.toml`（非隐藏目录），`repository.root`缺省为配置目录本身。
--渲染输入平铺加载：所有 `render.env_files`与模块 `ci_env_file`并列注入同一插值环境，无优先级分层。
--未插值视图使用 `LoadModelWithContext`返回合并后的 YAML字典（`map[string]any`），不解码为强类型以保留原始表达式。
--不做逐字段 diff来源追踪：卷命名扫单文件 yaml.v3节点；env来源分组通过模块 `env_group`前缀实现。
-- `render --format json`输出 compose-go规范化模型，不承诺 schema稳定；一致性校验通过规范化函数与 `docker compose config --format json`深比较。
--目标匹配：目录 / Compose文件 /唯一子串片段，零或多命中报错。
-- M1搭建结构化诊断骨架（规则 ID、目标绑定、修复提示）与退出码0/1/2。
+- 配置文件位于仓库根 `stacklint.toml`，`repository.root` 缺省为配置目录本身。
+- 渲染输入平铺加载，不建立额外优先级层级。
+- 未插值视图使用 `LoadModelWithContext` 返回合并后的 YAML 字典，不解码为强类型。
+- 不做逐字段 diff 来源追踪；卷命名扫描单文件节点，env 模块分组按配置前缀。
+- `render --format json` 输出 compose-go 规范化模型，不承诺 schema 稳定。
+- 目标匹配目录、Compose 文件或唯一子串片段，零或多命中报错。
+
+## 已实现决策（M2）
+
+- 多文件组合、输入来源、豁免和写入契约以本文 env 章节为准；实现集中于 `internal/envtemplate`，CLI 负责目标选择、结构化诊断与写入。
+- stacks 仓库只作为只读验收数据源，不修改其配置、工具入口或模板，不在 stacklint 运行代码中包含其路径或命名假设。
+- 试点 stack 的变量顺序、说明、完整表达式、来源参考及 dotenv 赋值语义保持一致，生成头和引号风格允许不同；验收逐项机械比较，不只比较有效空赋值集合。
+- JSON 输出包含 `results`、`diagnostics` 和 `exit_code`；诊断带 severity、rule、stack、variant、message、hint，结果带 stack、variant、output、status。JSON 版本策略仍未承诺稳定。

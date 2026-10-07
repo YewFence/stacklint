@@ -55,7 +55,18 @@ type BindAddressConfig struct {
 }
 
 type EnvConfig struct {
-	Output string `toml:"output"`
+	Output          string       `toml:"output"`
+	IncludeEnvFiles []string     `toml:"include_env_files"`
+	Variants        []EnvVariant `toml:"variant"`
+}
+
+// EnvVariant registers a complete Compose file combination for a stack.
+type EnvVariant struct {
+	Stack      string   `toml:"stack"`
+	Name       string   `toml:"name"`
+	Files      []string `toml:"files"`
+	Output     string   `toml:"output"`
+	CIEnvFiles []string `toml:"ci_env_files"`
 }
 
 type ImagesConfig struct {
@@ -130,6 +141,64 @@ func (c *Config) validate() error {
 		if m.RequiredEnvironment != nil && (m.RequiredEnvironment.Service == "" || m.RequiredEnvironment.Prefix == "") {
 			return fmt.Errorf("module[%d].required_environment: service and prefix are required", i)
 		}
+	}
+	return c.validateEnv()
+}
+
+func (c *Config) validateEnv() error {
+	if c.Env.Output == "" {
+		c.Env.Output = ".env.example"
+	}
+	if err := outputName(c.Env.Output); err != nil {
+		return fmt.Errorf("env.output: %w", err)
+	}
+	if err := requireNoDuplicates("env.include_env_files", c.Env.IncludeEnvFiles); err != nil {
+		return err
+	}
+	for _, path := range c.Env.IncludeEnvFiles {
+		if !filepath.IsLocal(path) {
+			return fmt.Errorf("env.include_env_files: %q must be repository-relative", path)
+		}
+	}
+	names := map[string]bool{}
+	outputs := map[string]bool{}
+	for i, v := range c.Env.Variants {
+		if !filepath.IsLocal(v.Stack) || v.Name == "" || v.Name == "base" {
+			return fmt.Errorf("env.variant[%d]: repository-relative stack and nonempty name other than base are required", i)
+		}
+		if len(v.Files) == 0 {
+			return fmt.Errorf("env.variant[%d]: files must not be empty", i)
+		}
+		if err := outputName(v.Output); err != nil {
+			return fmt.Errorf("env.variant[%d].output: %w", i, err)
+		}
+		stack := filepath.ToSlash(filepath.Clean(v.Stack))
+		key := stack + "\x00" + v.Name
+		out := stack + "\x00" + v.Output
+		if names[key] || outputs[out] || v.Output == c.Env.Output {
+			return fmt.Errorf("env.variant[%d]: duplicate variant name or output in stack %s", i, stack)
+		}
+		names[key], outputs[out] = true, true
+		for _, list := range []struct {
+			name  string
+			paths []string
+		}{{"files", v.Files}, {"ci_env_files", v.CIEnvFiles}} {
+			if err := requireNoDuplicates("env.variant."+list.name, list.paths); err != nil {
+				return err
+			}
+			for _, path := range list.paths {
+				if !filepath.IsLocal(path) {
+					return fmt.Errorf("env.variant[%d].%s: %q must be repository-relative", i, list.name, path)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func outputName(name string) error {
+	if name == "" || name == "." || name == ".." || name == ".env" || name == ".env.secrets" || filepath.Base(name) != name || !filepath.IsLocal(name) {
+		return fmt.Errorf("%q must be a filename inside the stack", name)
 	}
 	return nil
 }
