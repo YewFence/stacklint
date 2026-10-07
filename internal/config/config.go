@@ -1,0 +1,158 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/BurntSushi/toml"
+)
+
+// Config is the repository policy loaded from stacklint.toml.
+type Config struct {
+	Repository  RepositoryConfig  `toml:"repository"`
+	Render      RenderConfig      `toml:"render"`
+	Modules     []ModuleConfig    `toml:"module"`
+	Ports       PortsConfig       `toml:"ports"`
+	BindAddress BindAddressConfig `toml:"bind_address"`
+	Env         EnvConfig         `toml:"env"`
+	Images      ImagesConfig      `toml:"images"`
+}
+
+type RepositoryConfig struct {
+	Root             string   `toml:"root"`
+	DeploymentRoots  []string `toml:"deployment_roots"`
+	ModuleRoots      []string `toml:"module_roots"`
+	ComposeFilenames []string `toml:"compose_filenames"`
+}
+
+type RenderConfig struct {
+	EnvFiles []string `toml:"env_files"`
+}
+
+type ModuleConfig struct {
+	Compose                 string                     `toml:"compose"`
+	CIEnvFile               string                     `toml:"ci_env_file"`
+	WiringFile              string                     `toml:"wiring_file"`
+	WiringTemplate          string                     `toml:"wiring_template"`
+	EnvGroup                string                     `toml:"env_group"`
+	OptionalWiringVariables []string                   `toml:"optional_wiring_variables"`
+	RequiredEnvironment     *RequiredEnvironmentConfig `toml:"required_environment"`
+}
+
+type RequiredEnvironmentConfig struct {
+	Service string `toml:"service"`
+	Prefix  string `toml:"prefix"`
+}
+
+type PortsConfig struct {
+	SharedRoots []string `toml:"shared_roots"`
+}
+
+type BindAddressConfig struct {
+	DefaultVariable string `toml:"default_variable"`
+}
+
+type EnvConfig struct {
+	Output string `toml:"output"`
+}
+
+type ImagesConfig struct {
+	FloatingTags           []string `toml:"floating_tags"`
+	PrivateRepositories    []string `toml:"private_repositories"`
+	Concurrency            int      `toml:"concurrency"`
+	PerRegistryConcurrency int      `toml:"per_registry_concurrency"`
+	Timeout                string   `toml:"timeout"`
+	Retries                int      `toml:"retries"`
+}
+
+var (
+	ErrLoad     = errors.New("stacklint configuration load failed")
+	ErrValidate = errors.New("stacklint configuration invalid")
+)
+
+// Load reads and validates stacklint.toml from the given configuration directory.
+// Unknown keys, wrong types, and duplicate entries fail. Missing optional sections are allowed.
+func Load(configDir string) (*Config, error) {
+	path := filepath.Join(configDir, FileName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("%w: read %s: %v", ErrLoad, path, err)
+	}
+	var cfg Config
+	md, err := toml.Decode(string(data), &cfg)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %v", ErrLoad, path, err)
+	}
+	if undecoded := md.Undecoded(); len(undecoded) > 0 {
+		keys := make([]string, len(undecoded))
+		for i, k := range undecoded {
+			keys[i] = k.String()
+		}
+		return nil, fmt.Errorf("%w: %s: unknown keys: %v", ErrValidate, path, keys)
+	}
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("%w: %s: %v", ErrValidate, path, err)
+	}
+	return &cfg, nil
+}
+
+func (c *Config) validate() error {
+	if err := requireNoDuplicates("repository.deployment_roots", c.Repository.DeploymentRoots); err != nil {
+		return err
+	}
+	if err := requireNoDuplicates("repository.module_roots", c.Repository.ModuleRoots); err != nil {
+		return err
+	}
+	if err := requireNoDuplicates("repository.compose_filenames", c.Repository.ComposeFilenames); err != nil {
+		return err
+	}
+	if err := requireNoDuplicates("render.env_files", c.Render.EnvFiles); err != nil {
+		return err
+	}
+	if err := requireNoDuplicates("ports.shared_roots", c.Ports.SharedRoots); err != nil {
+		return err
+	}
+	if err := requireNoDuplicates("images.floating_tags", c.Images.FloatingTags); err != nil {
+		return err
+	}
+	if err := requireNoDuplicates("images.private_repositories", c.Images.PrivateRepositories); err != nil {
+		return err
+	}
+	for i, m := range c.Modules {
+		if m.Compose == "" {
+			return fmt.Errorf("module[%d]: compose is required", i)
+		}
+		if err := requireNoDuplicates(fmt.Sprintf("module[%d].optional_wiring_variables", i), m.OptionalWiringVariables); err != nil {
+			return err
+		}
+		if m.RequiredEnvironment != nil && (m.RequiredEnvironment.Service == "" || m.RequiredEnvironment.Prefix == "") {
+			return fmt.Errorf("module[%d].required_environment: service and prefix are required", i)
+		}
+	}
+	return nil
+}
+
+func requireNoDuplicates(field string, values []string) error {
+	seen := map[string]struct{}{}
+	for _, v := range values {
+		if _, dup := seen[v]; dup {
+			return fmt.Errorf("%s: duplicate entry %q", field, v)
+		}
+		seen[v] = struct{}{}
+	}
+	return nil
+}
+
+// RepoRoot resolves the repository root: repository.root relative to configDir,
+// defaulting to configDir itself.
+func (c *Config) RepoRoot(configDir string) string {
+	if c.Repository.Root != "" {
+		if filepath.IsAbs(c.Repository.Root) {
+			return filepath.Clean(c.Repository.Root)
+		}
+		return filepath.Clean(filepath.Join(configDir, c.Repository.Root))
+	}
+	return filepath.Clean(configDir)
+}

@@ -44,18 +44,18 @@ CLI 从一个配置目录读取全部策略，按以下优先级确定，命中�
 
 1. 全局参数 `--config-dir <dir>`。
 2. 环境变量 `STACKLINT_CONFIG_DIR`。
-3. 从当前工作目录向上查找名为 `.stacklint` 且包含 `stacklint.toml` 的目录。
+3. 从当前工作目录向上查找包含 `stacklint.toml` 的目录（通常是仓库根目录）。
 
 显式指定（1 或 2）的目录必须包含 `stacklint.toml`，否则直接失败。找不到配置目录时失败，不使用内置默认策略。
 
 ### 配置文件
 
-配置目录包含：
+配置文件位于仓库根目录，无隐藏目录：
 
 - `stacklint.toml`：仓库策略，必需。
 - `approvals.toml`：全部批准与豁免记录，可选；不存在等价于没有任何批准。
 
-`stacklint.toml` 中的 `repository.root` 相对配置目录解析，缺省为配置目录的父目录；其余所有路径都相对仓库根目录解析。未知键、错误类型、重复项均失败。
+`stacklint.toml` 中的 `repository.root` 相对配置目录解析，缺省为配置目录本身；其余所有路径都相对仓库根目录解析。未知键、错误类型、重复项均失败。
 
 示意（以一个 stacks 仓库为例，字段名在实现时定稿）：
 
@@ -66,15 +66,16 @@ module_roots = ["stacks/compose"]
 compose_filenames = ["compose.yaml", "compose.yml"]
 
 [render]
-# 按顺序叠加，后者优先；不存在的文件跳过
+# 所有渲染输入平铺加载，无优先级分层；不存在的文件跳过
 env_files = [".env.example", ".env.ci"]
-profiles = "all"
 
 [[module]]
 compose = "stacks/compose/litestream/compose.yaml"
 ci_env_file = ".env.ci.litestream"
 wiring_file = ".env.litestream"
 wiring_template = ".env.litestream.example"
+# 可选：env 模板的模块分组前缀，缺省回退到 required_environment.prefix
+env_group = "LITESTREAM_"
 optional_wiring_variables = ["LITESTREAM_REPLICA_SCOPE"]
 # 该模块的服务渲染后这些前缀的变量必须非空
 required_environment = { service = "litestream", prefix = "LITESTREAM_" }
@@ -114,8 +115,8 @@ retries = 2
 - include 自带的 `env_file`（例如模块 wiring 文件）保持 Compose 原生优先级，低于项目级输入。
 - 不读取进程环境，不加载项目目录下的 `.env`。
 - 启用全部 profile。
-- 同时提供两种视图：插值后的规范化模型，以及未插值的模型（部分规则需要读取原始插值表达式）。
-- 提供源文件关系：stack 实际引用的全部源文件（include 递归展开），以及每个服务、卷、字段来自哪个源文件。compose-go 合并后能否保留来源需要验证，见待定问题。
+- 同时提供两种视图：插值后的规范化模型，以及未插值的模型（部分规则需要读取原始插值表达式）。未插值视图通过 `LoadModelWithContext` 返回合并后的 YAML 字典，不解码为强类型以保留原始表达式。
+- 提供源文件关系：stack 实际引用的全部源文件（include 递归展开），以及每个服务、卷、字段来自哪个源文件。卷命名与 env 来源分组通过扫描单文件 yaml.v3 节点与模块 `env_group` 前缀实现，不做逐字段 diff 追踪。
 - 渲染失败的 stack 报告错误并继续检查其他 stack。
 
 ### 按 Git ref 加载
@@ -255,3 +256,13 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 - Crow 中 digest 检查目前由固定 plugin 镜像执行，以隔离 registry 凭据与 PR 代码；切换后的 plugin 形态和信任边界需要重新设计。
 - 覆盖模板中 dotenv 赋值的编码规则，以及与 Docker 实际读取行为的差异边界。
 - 输出 JSON 的 schema 与版本策略。
+
+##已实现决策（M1）
+
+-配置文件位于仓库根 `stacklint.toml`（非隐藏目录），`repository.root`缺省为配置目录本身。
+-渲染输入平铺加载：所有 `render.env_files`与模块 `ci_env_file`并列注入同一插值环境，无优先级分层。
+-未插值视图使用 `LoadModelWithContext`返回合并后的 YAML字典（`map[string]any`），不解码为强类型以保留原始表达式。
+-不做逐字段 diff来源追踪：卷命名扫单文件 yaml.v3节点；env来源分组通过模块 `env_group`前缀实现。
+- `render --format json`输出 compose-go规范化模型，不承诺 schema稳定；一致性校验通过规范化函数与 `docker compose config --format json`深比较。
+-目标匹配：目录 / Compose文件 /唯一子串片段，零或多命中报错。
+- M1搭建结构化诊断骨架（规则 ID、目标绑定、修复提示）与退出码0/1/2。

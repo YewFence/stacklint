@@ -8,19 +8,19 @@ import (
 )
 
 const (
-	DirName = ".stacklint"
 	FileName = "stacklint.toml"
-	EnvVar = "STACKLINT_CONFIG_DIR"
+	EnvVar   = "STACKLINT_CONFIG_DIR"
 )
 
 var (
 	ErrNotFound = errors.New("stacklint configuration directory not found")
-	ErrInvalid = errors.New("specified directory does not contain stacklint.toml")
+	ErrInvalid  = errors.New("specified directory does not contain stacklint.toml")
 )
 
 // ResolveDir locates the configuration directory, returning an absolute path.
 // Precedence: explicit dir (if non-empty) > STACKLINT_CONFIG_DIR env > upward search from workdir.
-// Explicit directories must contain stacklint.toml; upward search stops at the first .stacklint/ with stacklint.toml.
+// Explicit directories must contain stacklint.toml; upward search stops at the first directory
+// that directly contains stacklint.toml (typically the repository root).
 func ResolveDir(explicit string, workdir string) (string, error) {
 	if explicit != "" {
 		abs, err := filepath.Abs(explicit)
@@ -66,9 +66,8 @@ func validate(dir string) error {
 func search(start string) (string, error) {
 	current := start
 	for {
-		candidate := filepath.Join(current, DirName)
-		if err := validate(candidate); err == nil {
-			return candidate, nil
+		if err := validate(current); err == nil {
+			return current, nil
 		}
 		parent := filepath.Dir(current)
 		if parent == current {

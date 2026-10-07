@@ -12,9 +12,9 @@ var configDir string
 
 func NewRootCommand(version string) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "stacklint",
-		Short: "Static analysis, environment template generation, and image checks for Docker Compose stack repositories",
-		Long:  "Static analysis, environment template generation, and image checks for Docker Compose stack repositories",
+		Use:          "stacklint",
+		Short:        "Static analysis, environment template generation, and image checks for Docker Compose stack repositories",
+		Long:         "Static analysis, environment template generation, and image checks for Docker Compose stack repositories",
 		SilenceUsage: true,
 	}
 	rootCmd.PersistentFlags().StringVar(&configDir, "config-dir", "", "Configuration directory (overrides "+config.EnvVar+")")

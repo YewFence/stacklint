@@ -9,11 +9,8 @@ import (
 
 func TestResolveDir(t *testing.T) {
 	tmp := t.TempDir()
-	configDir := filepath.Join(tmp, DirName)
+	configDir := tmp
 	configFile := filepath.Join(configDir, FileName)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(configFile, []byte("# test"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -52,12 +49,12 @@ func TestResolveDir(t *testing.T) {
 		},
 		{
 			name:    "not found",
-			workdir: t.TempDir(),
+			workdir: filepath.Join(t.TempDir(), "nested"),
 			wantErr: ErrNotFound,
 		},
 		{
 			name:     "explicit dir missing file",
-			explicit: tmp,
+			explicit: filepath.Join(tmp, "empty"),
 			workdir:  tmp,
 			wantErr:  ErrInvalid,
 		},
@@ -68,7 +65,12 @@ func TestResolveDir(t *testing.T) {
 			if tt.envValue != "" {
 				t.Setenv(EnvVar, tt.envValue)
 			}
-			if tt.workdir != "" && tt.workdir != tmp {
+			if tt.explicit != "" {
+				if err := os.MkdirAll(tt.explicit, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.workdir != "" {
 				if err := os.MkdirAll(tt.workdir, 0o755); err != nil {
 					t.Fatal(err)
 				}
