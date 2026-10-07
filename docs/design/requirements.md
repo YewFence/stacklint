@@ -296,3 +296,15 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 - stacks 仓库只作为只读验收数据源，不修改其配置、工具入口或模板，不在 stacklint 运行代码中包含其路径或命名假设。
 - 试点 stack 的变量顺序、说明、完整表达式、来源参考及 dotenv 赋值语义保持一致，生成头和引号风格允许不同；验收逐项机械比较，不只比较有效空赋值集合。
 - JSON 输出包含 `results`、`diagnostics` 和 `exit_code`；诊断带 severity、rule、stack、variant、message、hint，结果带 stack、variant、output、status。JSON 版本策略仍未承诺稳定。
+
+## 已实现决策（M3）
+
+- `check` 渲染 base 及全部已登记变体组合，逐组合执行规则，诊断带 variant 维度；变体渲染输入池追加该变体的 `ci_env_files`（显式登记的文件必须存在）。
+- 发布端口唯一性按"共享根 ∪ 其余每个部署根"分组、跨 stack 比对：冲突对必须来自不同 stack，或同 stack 同变体内的不同绑定（含同服务同端口不同 host_ip 的重复发布）。批准 slot 为（组、端口、协议），组从 bindings 的 Compose 路径派生，恰好一个非共享根。
+- `check` 不支持 `--variant`，始终检查选中 stack 的全部组合。
+- 插值分析提取为 `internal/interp`（compose-go template 记录型求值），镜像引用解析为 `internal/imageref`（distribution/reference），模块 include 图与 wiring 变量集为 `internal/wiring`；check 与 envtemplate 共用同一语义来源。
+- 规则架构：`internal/check` 每条规则一个文件，统一 `(ruleContext) → []Diagnostic`；wiring 与模块必需环境是 stack 级规则，每 stack 在 base 组合上跑一遍，模块归属取全部组合 include 图的并集。include 路径解析遵循 compose-go：path 相对引用方 workingDir，`project_directory` 只成为被 include 文件的工作目录。
+- 结构规则在未插值视图判断顶层 `name`（compose-go 会自动从目录名补名）；`env_file` 路径在未插值视图中已被解析为绝对路径。
+- `approvals.toml` 校验与既有 compose-checks 对齐：未知键、缺字段、非法规则/端口/变量、目标文件不存在、重复目标均报错；已固定 digest 的镜像批准视为冗余并在过期批准检查中报错。过期批准只在批准引用的全部 Compose 文件都在本次范围内时判断。
+- 卷命名扫描单文件 yaml.v3 节点（include 图内全部文件），渲染后必须有非空 `name` 且在源文件中显式写出。
+- M3 验收：stacks 仓库 38 个 stack base 组合与 compose-checks 输出一致（0 诊断）；变体 overlay 不在 oracle 覆盖范围，alloy-agent postgres 变体因 `POSTGRES_DATA_SOURCE_NAMES` 只有生成输出提供值而渲染失败，迁移时需为其登记 `ci_env_files`。

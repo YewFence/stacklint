@@ -27,22 +27,30 @@ type StackRender struct {
 	SourceFiles []string
 }
 
-// Render loads and renders one stack. Render inputs are flattened into a single
-// interpolation environment with no precedence tiers: render.env_files (relative
-// to the stack directory) and all registered modules' CI env files (relative to
-// each module's Compose directory). Missing files are skipped. The process
-// environment and project .env are never read. All profiles are enabled.
+// Render loads and renders one stack's base combination. Render inputs are
+// flattened into a single interpolation environment with no precedence tiers:
+// render.env_files (relative to the stack directory) and all registered
+// modules' CI env files (relative to each module's Compose directory). Missing
+// files are skipped. The process environment and project .env are never read.
+// All profiles are enabled.
 func Render(ctx context.Context, cfg *config.Config, repoRoot string, stack discover.Stack) (*StackRender, error) {
-	env, err := renderEnv(cfg, repoRoot, stack)
+	return RenderCombination(ctx, cfg, repoRoot, stack, []string{stack.ComposeFile}, nil)
+}
+
+// RenderCombination renders an explicit ordered Compose file list for a stack,
+// appending extraEnvFiles (repository-relative CI inputs, which must exist) to
+// the flattened render environment.
+func RenderCombination(ctx context.Context, cfg *config.Config, repoRoot string, stack discover.Stack, files []string, extraEnvFiles []string) (*StackRender, error) {
+	env, err := renderEnv(cfg, repoRoot, stack, extraEnvFiles)
 	if err != nil {
 		return nil, err
 	}
 
-	project, err := loadProject(ctx, stack, env, true)
+	project, err := loadProject(ctx, stack, files, env, true)
 	if err != nil {
 		return nil, err
 	}
-	raw, err := loadRawModel(ctx, stack, env)
+	raw, err := loadRawModel(ctx, stack, files, env)
 	if err != nil {
 		return nil, fmt.Errorf("load uninterpolated view of %s: %w", stack.RelPath, err)
 	}
@@ -54,7 +62,7 @@ func Render(ctx context.Context, cfg *config.Config, repoRoot string, stack disc
 	}, nil
 }
 
-func renderEnv(cfg *config.Config, repoRoot string, stack discover.Stack) (map[string]string, error) {
+func renderEnv(cfg *config.Config, repoRoot string, stack discover.Stack, extraEnvFiles []string) (map[string]string, error) {
 	var files []string
 	for _, rel := range cfg.Render.EnvFiles {
 		files = append(files, filepath.Join(stack.Dir, rel))
@@ -64,15 +72,21 @@ func renderEnv(cfg *config.Config, repoRoot string, stack discover.Stack) (map[s
 			files = append(files, filepath.Join(repoRoot, filepath.Dir(m.Compose), m.CIEnvFile))
 		}
 	}
-	return readEnvFiles(files)
+	for _, rel := range extraEnvFiles {
+		files = append(files, filepath.Join(repoRoot, rel))
+	}
+	return readEnvFiles(files, len(extraEnvFiles))
 }
 
-func readEnvFiles(files []string) (map[string]string, error) {
+// readEnvFiles loads the flattened render environment. Missing files are
+// skipped, except the final requiredExtra entries (combination CI inputs),
+// which are explicitly registered and must exist.
+func readEnvFiles(files []string, requiredExtra int) (map[string]string, error) {
 	env := map[string]string{}
-	for _, file := range files {
+	for i, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if os.IsNotExist(err) && i < len(files)-requiredExtra {
 				continue
 			}
 			return nil, fmt.Errorf("read env file %s: %w", file, err)
@@ -98,8 +112,8 @@ func baseOptions(stack discover.Stack, env map[string]string, interpolate bool) 
 	}
 }
 
-func loadProject(ctx context.Context, stack discover.Stack, env map[string]string, interpolate bool) (*types.Project, error) {
-	opts, err := composecli.NewProjectOptions([]string{stack.ComposeFile}, baseOptions(stack, env, interpolate)...)
+func loadProject(ctx context.Context, stack discover.Stack, files []string, env map[string]string, interpolate bool) (*types.Project, error) {
+	opts, err := composecli.NewProjectOptions(files, baseOptions(stack, env, interpolate)...)
 	if err != nil {
 		return nil, fmt.Errorf("project options for %s: %w", stack.RelPath, err)
 	}
@@ -112,8 +126,8 @@ func loadProject(ctx context.Context, stack discover.Stack, env map[string]strin
 
 // loadRawModel produces the uninterpolated view as a merged YAML dictionary so
 // raw expressions stay intact without triggering typed decoding validation.
-func loadRawModel(ctx context.Context, stack discover.Stack, env map[string]string) (map[string]any, error) {
-	configDetails, err := loader.LoadConfigFiles(ctx, []string{stack.ComposeFile}, stack.Dir)
+func loadRawModel(ctx context.Context, stack discover.Stack, files []string, env map[string]string) (map[string]any, error) {
+	configDetails, err := loader.LoadConfigFiles(ctx, files, stack.Dir)
 	if err != nil {
 		return nil, err
 	}

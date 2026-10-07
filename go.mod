@@ -5,12 +5,12 @@ go 1.26.5
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/compose-spec/compose-go/v2 v2.16.1
+	github.com/distribution/reference v0.5.0
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.4
 )
 
 require (
-	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect

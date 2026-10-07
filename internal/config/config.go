@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -224,4 +226,54 @@ func (c *Config) RepoRoot(configDir string) string {
 		return filepath.Clean(filepath.Join(configDir, c.Repository.Root))
 	}
 	return filepath.Clean(configDir)
+}
+
+// IsSharedRoot reports whether the deployment root is a shared port root.
+func (c *Config) IsSharedRoot(root string) bool {
+	for _, shared := range c.Ports.SharedRoots {
+		if filepath.ToSlash(filepath.Clean(shared)) == root {
+			return true
+		}
+	}
+	return false
+}
+
+// PortGroupRoots returns the non-shared deployment roots; each forms a port
+// group together with the shared roots.
+func (c *Config) PortGroupRoots() []string {
+	var roots []string
+	for _, root := range c.Repository.DeploymentRoots {
+		root = filepath.ToSlash(filepath.Clean(root))
+		if !c.IsSharedRoot(root) {
+			roots = append(roots, root)
+		}
+	}
+	slices.Sort(roots)
+	return roots
+}
+
+// PortGroupName renders a group as "<root>+<shared>", matching the original
+// tooling's convention of "<root>+edge" for one shared root.
+func (c *Config) PortGroupName(root string) string {
+	parts := []string{filepath.Base(root)}
+	for _, shared := range c.Ports.SharedRoots {
+		parts = append(parts, filepath.Base(filepath.Clean(shared)))
+	}
+	return strings.Join(parts, "+")
+}
+
+// DeploymentRootOf maps a repository-relative path to its non-shared
+// deployment root, or "" when the path lives under a shared root.
+func (c *Config) DeploymentRootOf(relPath string) string {
+	for _, root := range c.Repository.DeploymentRoots {
+		root = filepath.ToSlash(filepath.Clean(root))
+		if relPath != root && !strings.HasPrefix(relPath, root+"/") {
+			continue
+		}
+		if c.IsSharedRoot(root) {
+			return ""
+		}
+		return root
+	}
+	return ""
 }
