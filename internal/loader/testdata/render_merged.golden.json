@@ -1,0 +1,76 @@
+{
+  "name": "golden",
+  "services": {
+    "web": {
+      "profiles": [
+        "web"
+      ],
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "EXTRA": "added-by-overlay",
+        "GREETING": "overridden",
+        "LITERAL_DOLLAR": "${NOT_INTERPOLATED}",
+        "NESTED": "https://example.com",
+        "REQUIRED": "present"
+      },
+      "image": "nginx:1.27",
+      "labels": {
+        "app": "golden",
+        "host": "example.com"
+      },
+      "networks": {
+        "default": null
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "curl -f http://localhost/health || exit 1"
+        ]
+      },
+      "ports": [
+        {
+          "mode": "ingress",
+          "host_ip": "127.0.0.1",
+          "target": 80,
+          "published": "8080",
+          "protocol": "tcp"
+        }
+      ]
+    },
+    "worker": {
+      "profiles": [
+        "worker"
+      ],
+      "command": [
+        "sh",
+        "-c",
+        "echo $WORKER_READY"
+      ],
+      "entrypoint": null,
+      "image": "busybox:latest",
+      "networks": {
+        "default": null
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "data",
+          "target": "/data",
+          "volume": {}
+        }
+      ]
+    }
+  },
+  "networks": {
+    "default": {
+      "name": "golden_default",
+      "ipam": {}
+    }
+  },
+  "volumes": {
+    "data": {
+      "name": "golden_data"
+    }
+  }
+}

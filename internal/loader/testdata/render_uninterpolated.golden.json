@@ -1,0 +1,71 @@
+{
+  "name": "golden",
+  "networks": {
+    "default": {
+      "name": "golden_default"
+    }
+  },
+  "services": {
+    "web": {
+      "environment": {
+        "GREETING": "${GREETING:-hi}",
+        "LITERAL_DOLLAR": "$${NOT_INTERPOLATED}",
+        "NESTED": "${URL:-https://${DOMAIN:-example.com}}",
+        "REQUIRED": "${REQUIRED_VAR:?must be set}"
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "curl -f http://localhost/health || exit 1"
+        ]
+      },
+      "image": "nginx:${NGINX_TAG:-1.27}",
+      "labels": [
+        "app=golden",
+        "host=${DOMAIN:-example.com}"
+      ],
+      "networks": {
+        "default": null
+      },
+      "ports": [
+        {
+          "host_ip": "${BIND_ADDRESS:-127.0.0.1}",
+          "mode": "ingress",
+          "protocol": "tcp",
+          "published": "${WEB_PORT:-8080}",
+          "target": 80
+        }
+      ],
+      "profiles": [
+        "${WEB_PROFILE:-web}"
+      ]
+    },
+    "worker": {
+      "command": [
+        "sh",
+        "-c",
+        "echo $$WORKER_READY"
+      ],
+      "image": "busybox:latest",
+      "networks": {
+        "default": null
+      },
+      "profiles": [
+        "worker"
+      ],
+      "volumes": [
+        {
+          "source": "data",
+          "target": "/data",
+          "type": "volume",
+          "volume": {}
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "data": {
+      "name": "golden_data"
+    }
+  }
+}

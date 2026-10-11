@@ -1,0 +1,41 @@
+{
+  "name": "golden",
+  "networks": {
+    "default": {
+      "name": "golden_default"
+    }
+  },
+  "services": {
+    "module": {
+      "environment": {
+        "ANCHORED": "${ANCHOR_VALUE:-anchored-default}",
+        "MODULE_VALUE": "${MODULE_VALUE:?module input required}",
+        "OVERRIDDEN": "service-value",
+        "PROJECT_VALUE": "${PROJECT_VALUE:?project input required}"
+      },
+      "image": "busybox:latest",
+      "networks": {
+        "default": null
+      }
+    },
+    "nested": {
+      "environment": {
+        "MODULE_VALUE": "${MODULE_VALUE:?nested module input required}",
+        "NESTED": "${NESTED_VALUE:-nested-default}"
+      },
+      "image": "alpine:3.21",
+      "networks": {
+        "default": null
+      }
+    },
+    "web": {
+      "environment": {
+        "PROJECT_VALUE": "${PROJECT_VALUE:?project input required}"
+      },
+      "image": "nginx:1.27",
+      "networks": {
+        "default": null
+      }
+    }
+  }
+}

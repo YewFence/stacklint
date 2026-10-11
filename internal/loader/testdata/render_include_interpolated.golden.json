@@ -1,0 +1,48 @@
+{
+  "name": "golden",
+  "services": {
+    "module": {
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "ANCHORED": "anchored-default",
+        "MODULE_VALUE": "from-include-env",
+        "OVERRIDDEN": "service-value",
+        "PROJECT_VALUE": "from-project"
+      },
+      "image": "busybox:latest",
+      "networks": {
+        "default": null
+      }
+    },
+    "nested": {
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "MODULE_VALUE": "from-include-env",
+        "NESTED": "nested-default"
+      },
+      "image": "alpine:3.21",
+      "networks": {
+        "default": null
+      }
+    },
+    "web": {
+      "command": null,
+      "entrypoint": null,
+      "environment": {
+        "PROJECT_VALUE": "from-project"
+      },
+      "image": "nginx:1.27",
+      "networks": {
+        "default": null
+      }
+    }
+  },
+  "networks": {
+    "default": {
+      "name": "golden_default",
+      "ipam": {}
+    }
+  }
+}

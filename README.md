@@ -63,7 +63,7 @@ stacklint finds its configuration by walking up from the working directory to th
 
 ## Compose compatibility
 
-The CLI embeds compose-go v2.16.1 and does not require Docker for analysis; no behavioral divergence from recent Docker Compose plugin versions is known. Because the embedded compose-go may differ from the Compose plugin on a deployment host, my stacks repo compares `stacklint render --format json` against `docker compose config --format json` in CI, and generated dotenv assignments are verified by round-tripping through the compose-go parser before being written.
+The CLI embeds compose-go v2.16.1 and does not require Docker anywhere: analysis, CI, and deployment hosts all run without a Docker Compose installation. Byte-exact golden tests compare both the normalized and uninterpolated models for covered scenarios (`go test ./internal/loader`). A compose-go upgrade that changes interpolation, merging, normalization, or schema output in those scenarios fails CI and must be reviewed deliberately; the tests do not guarantee detection outside their coverage or compatibility with every Docker Compose CLI version. Generated dotenv assignments are verified by round-tripping through the compose-go parser before being written.
 
 ## Status
 

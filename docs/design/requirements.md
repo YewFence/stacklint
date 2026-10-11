@@ -244,7 +244,7 @@ retries = 2
 
 ### `stacklint render [target] [--no-interpolate] --format json`
 
-输出单个 stack 的规范化模型，用于排障和 Compose 一致性校验。
+输出单个 stack 的规范化模型，用于排障。
 
 ## 输出与退出码
 
@@ -254,10 +254,9 @@ retries = 2
 
 ## 与 Docker Compose 的一致性
 
-stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能不同。为此：
+渲染语义以内嵌的 compose-go 为准，不安装、不调用 Docker CLI。`internal/loader` 的 golden 测试对规范化模型和未插值模型做逐字节比较；compose-go 升级若改变插值、合并、规范化或 schema 输出，测试变红，显式审查后用 `go test ./internal/loader -update` 接受新行为。
 
-- 依赖方仓库的 CI 中对每个 stack 比较 `stacklint render --format json` 与 `docker compose config --format json` 的规范化结果，出现差异时失败。这是唯一需要 Docker CLI 的环节，不属于 stacklint 本身。
-- README 记录 stacklint 内置的 compose-go 版本，以及已知的不一致。
+定稿前实测过 stacks 仓库 38 个 stack（compose-go 2.16.1 vs Docker Compose v5.6.0）：渲染语义零分歧，差异全部在输出形态层（profile 裁剪、`$$` 重转义、顶层 `x-` 键保留、profile 资源连带裁剪），且 Docker CLI 自身的输出形态随版本漂移。
 
 ## 非功能需求
 
@@ -268,7 +267,7 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 
 ## 迁移计划
 
-1. 配置目录、发现、加载、渲染和 `render` 命令，并在 stacks 仓库 CI 接入 Compose 一致性校验。
+1. 配置目录、发现、加载、渲染和 `render` 命令。
 2. `env`：先迁一个 stack 试点，以既有 compose-env 的测试用例为对照。dotenv 解析结果与说明内容必须一致；引号风格允许改变，差异需要记录。
 3. `check`：逐条规则迁移，以 compose-checks 的测试用例为对照，`approvals.toml` 直接复用。
 4. `images`：digest 检查与 `images list`。
@@ -276,7 +275,7 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 
 ## 待定问题
 
-无。原四项已定稿：regclient `config` 包直接支持标准 `DOCKER_CONFIG`（含 cred helper，机制已确认，凭据流程在接入时实机验证）；Crow plugin 信任边界移出 stacklint，归 stacks 仓库迁移议题；dotenv 差异由往返验证兜底、外部差异由 stacks 仓库 CI 一致性校验承担，README 记录分工；JSON 输出加 `version` 字段、1.0 前不承诺稳定。详见 M4 决策。
+无。原四项已定稿：regclient `config` 包直接支持标准 `DOCKER_CONFIG`（含 cred helper，机制已确认，凭据流程在接入时实机验证）；Crow plugin 信任边界移出 stacklint，归 stacks 仓库迁移议题；dotenv 写出的正确性由 compose-go 解析器往返校验保证；JSON 输出加 `version` 字段、1.0 前不承诺稳定。详见 M4 决策。
 
 ## 已实现决策（M1）
 
@@ -323,3 +322,8 @@ stacklint 用 compose-go 代替宿主机的 Compose plugin，两者版本可能�
 - registry 错误分类只用 regclient 结构化哨兵：`ErrNotFound`→not-found、`ErrHTTPUnauthorized`→authentication、`ErrHTTPRateLimit` 与其他 `ErrHTTPStatus`→retryable、其余（传输/超时）→retryable。regclient 不在错误中结构化携带 5xx 状态码，因此其他状态码一律按可重试处理：多试几次 4xx 无害，误判 5xx 为终态才会误报。重试次数与超时来自 `images.retries`/`images.timeout`，默认值 8/4/30s/2 与 oracle 一致；`images.timeout` 在配置加载时校验为合法 duration。
 - 与 oracle 的唯一分类差异：oracle 按文本正则提取 HTTP 状态码区分 5xx 与其他 4xx，stacklint 不解析文本，放弃该区分（见上）。
 - M4 验收：stacks 仓库全量 59 条引用实机验证通过；tag 漂移且 digest 存在报 warning，私有仓库无凭据 warning 跳过；`--base HEAD` 增量为空时不访问 registry；基线缺 `stacklint.toml` 或策略段变化自动转全量。
+
+## 已实现决策（M5 设计定稿）
+
+- 渲染语义以内嵌 compose-go 为准，分析、CI 与部署主机均不需要 Docker CLI。定稿依据为 stacks 仓库 38 个 stack 的实测（compose-go 2.16.1 vs Docker Compose v5.6.0）：渲染语义零分歧，差异全部在输出形态层（profile 裁剪、`$$` 重转义、顶层 `x-` 键保留、profile 资源连带裁剪），且 Docker CLI 自身输出形态随版本漂移（v5.6.0 `config --no-normalize` 对含 `$$` 的 healthcheck 误报错误）。
+- compose-go 升级的行为回归由 `internal/loader` 的 golden 测试拦下：规范化模型与未插值模型逐字节钉死，覆盖插值默认值、必填表达式、嵌套与转义、有序 overlay 合并、profile、healthcheck、YAML 锚点/merge key、递归 include、`project_directory` 路径解析及显式 include `env_file` 与项目输入的优先级。升级变红后显式审查，以 `go test ./internal/loader -update` 接受新行为。
