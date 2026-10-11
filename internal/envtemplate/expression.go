@@ -24,6 +24,7 @@ type input struct {
 	Name         string
 	Occurrences  []occurrence
 	Descriptions []string
+	Preambles    []string
 	Source       string
 	Group        string
 }

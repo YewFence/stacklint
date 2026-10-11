@@ -340,16 +340,19 @@ func (s *scanner) commentText(comment string, source sourceFile) {
 		if !strings.HasPrefix(text, "@env") {
 			continue
 		}
-		kind := "env"
-		rest, ok := strings.CutPrefix(text, "@env-source")
-		if ok {
-			kind = "env-source"
-		} else {
-			rest = strings.TrimPrefix(text, "@env")
+		kind := "invalid"
+		rest := ""
+		// Longest markers first so @env-preamble is not swallowed by @env.
+		for _, marker := range []string{"@env-preamble", "@env-source", "@env"} {
+			trimmed, ok := strings.CutPrefix(text, marker)
+			if ok && (trimmed == "" || trimmed[0] == ' ' || trimmed[0] == '\t') {
+				kind, rest = marker, trimmed
+				break
+			}
 		}
 		name, description, hasColon := strings.Cut(strings.TrimSpace(rest), ":")
 		name, description = strings.TrimSpace(name), strings.TrimSpace(description)
-		if !hasColon || !validName(name) || description == "" {
+		if kind != "invalid" && (!hasColon || !validName(name) || description == "" && kind != "@env-preamble") {
 			kind = "invalid"
 		}
 		s.annotations = append(s.annotations, annotation{Name: name, Kind: kind, Text: description, File: s.graph.relative(source.Path)})
@@ -365,11 +368,12 @@ func (s *scanner) applyAnnotations() error {
 		if item == nil {
 			return fmt.Errorf("annotation for %s in %s has no matching input", mark.Name, mark.File)
 		}
-		if mark.Kind == "env" {
+		switch mark.Kind {
+		case "@env":
 			if !slices.Contains(item.Descriptions, mark.Text) {
 				item.Descriptions = append(item.Descriptions, mark.Text)
 			}
-		} else {
+		case "@env-source":
 			if item.Source != "" && item.Source != mark.Text {
 				return fmt.Errorf("conflicting @env-source providers for %s", mark.Name)
 			}
@@ -388,6 +392,20 @@ func (s *scanner) applyAnnotations() error {
 	for _, item := range s.inputs {
 		if item.Source == "" && len(item.Occurrences) > 0 {
 			item.Source = item.Occurrences[0].Source
+		}
+	}
+	// Preamble anchors are validated after source backfill: the anchor must
+	// render assignment entries, so externally supplied inputs cannot anchor.
+	for _, mark := range s.annotations {
+		if mark.Kind != "@env-preamble" {
+			continue
+		}
+		item := s.byName[mark.Name]
+		if item.Source != "" {
+			return fmt.Errorf("@env-preamble for %s in %s anchors an input with no assignment entry", mark.Name, mark.File)
+		}
+		if !slices.Contains(item.Preambles, mark.Text) {
+			item.Preambles = append(item.Preambles, mark.Text)
 		}
 	}
 	return nil

@@ -95,6 +95,12 @@ func hasEffective(item *input) bool {
 
 func renderEntry(item *input, loading, showFile bool) ([]string, error) {
 	var lines []string
+	for _, preamble := range item.Preambles {
+		lines = append(lines, commentLines(preamble)...)
+	}
+	if len(item.Preambles) > 0 {
+		lines = append(lines, "")
+	}
 	for _, description := range item.Descriptions {
 		lines = append(lines, commentLines(description)...)
 	}
