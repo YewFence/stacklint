@@ -1,3 +1,15 @@
+## What's Changed in 0.2.0
+* ci(deps): update github actions by @renovate[bot] in [#4](https://github.com/YewFence/stacklint/pull/4)
+* chore(mise-deps): update mise tools by @renovate[bot] in [#8](https://github.com/YewFence/stacklint/pull/8)
+* chore(go-deps): update go module directive to v1.27.2 by @renovate[bot] in [#6](https://github.com/YewFence/stacklint/pull/6)
+* chore(gomod-deps): update go modules by @renovate[bot] in [#3](https://github.com/YewFence/stacklint/pull/3)
+* add @env-preamble marker for group-level descriptions by @YewFence
+
+### New Contributors
+* @renovate[bot] made their first contribution in [#4](https://github.com/YewFence/stacklint/pull/4)
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.1.0...v0.2.0
+
 ## What's Changed in 0.1.0
 * pin compose-go rendering with dual-view goldens by @YewFence
 * reposition README as a personal, fork-friendly tool for v0.1.0 by @YewFence
