@@ -62,6 +62,14 @@ footer = """
 # Replace the placeholder `<REPO>` with a URL.
 postprocessors = []
 
+[bump]
+# A breaking change must not bump the major version (i.e. jump to 1.0.0
+# while the project is 0.x). Commits of type `feat` (including breaking
+# ones like `feat!:`) still bump the minor version; releases without any
+# feature commit bump the patch version.
+features_always_bump_minor = true
+breaking_always_bump_major = false
+
 [git]
 # Parse commits according to the conventional commits specification.
 # See https://www.conventionalcommits.org
