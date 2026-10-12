@@ -48,15 +48,15 @@ func generate(t *testing.T, root string, cfg *config.Config, target envtemplate.
 func TestExpressionSemantics(t *testing.T) {
 	tests := []struct{ name, expression, want string }{
 		{"soft default", "${VALUE:-default}", "# VALUE=default\n"},
-		{"hard default", "${VALUE-default}", "# Default applies only when unset, not when empty.\n# VALUE=default\n"},
-		{"required nonempty", "${VALUE:?required}", "# Required; must not be empty.\nVALUE=\n"},
-		{"required empty allowed", "${VALUE?required}", "# Required; may be empty.\nVALUE=\n"},
+		{"hard default", "${VALUE-default}", "## Default applies only when unset, not when empty.\n# VALUE=default\n"},
+		{"required nonempty", "${VALUE:?required}", "## Required\nVALUE=\n"},
+		{"required empty allowed", "${VALUE?required}", "## Required; may be empty\nVALUE=\n"},
 		{"plain", "${VALUE}", "# VALUE=\n"},
 		{"unbraced", "$VALUE", "# VALUE=\n"},
 		{"empty default", "${VALUE:-}", "# VALUE=\n"},
-		{"alternate", "${VALUE:+alternate}", "# Expression at services.app.environment.TEST:\n# ${VALUE:+alternate}\n# VALUE=\n"},
-		{"set alternate", "${VALUE+alternate}", "# Expression at services.app.environment.TEST:\n# ${VALUE+alternate}\n# VALUE=\n"},
-		{"repeated", "${VALUE:-one}/${VALUE:-two}", "# ${VALUE:-one}/${VALUE:-two}\n# VALUE=\n"},
+		{"alternate", "${VALUE:+alternate}", "## Expression at services.app.environment.TEST:\n## ${VALUE:+alternate}\n# VALUE=\n"},
+		{"set alternate", "${VALUE+alternate}", "## Expression at services.app.environment.TEST:\n## ${VALUE+alternate}\n# VALUE=\n"},
+		{"repeated", "${VALUE:-one}/${VALUE:-two}", "## ${VALUE:-one}/${VALUE:-two}\n# VALUE=\n"},
 		{"nested required", "${VALUE:-https://${DOMAIN:?required}}", "# DOMAIN=\n"},
 		{"conditional required", "${ENABLE:+${VALUE:?required}}", "# VALUE=\n"},
 		{"required message dependency", "${VALUE:?${MESSAGE:?provide message}}", "# MESSAGE=\n"},
@@ -154,7 +154,7 @@ secrets:
 	if strings.Count(text, "First explanation.") != 1 || strings.Count(text, "Second explanation.") != 1 {
 		t.Fatalf("description dedup failed:\n%s", text)
 	}
-	if strings.Contains(text, "MACHINE=") || !strings.Contains(text, "# MACHINE: deployment readiness") {
+	if strings.Contains(text, "MACHINE=") || !strings.Contains(text, "## MACHINE: deployment readiness") {
 		t.Fatalf("source reference failed:\n%s", text)
 	}
 }
@@ -185,7 +185,7 @@ services:
 	if !strings.Contains(text, "# LEVEL=debug") || strings.Contains(text, "# LEVEL=info") {
 		t.Fatalf("effective default incorrect:\n%s", text)
 	}
-	if !strings.Contains(text, "# Loading-stage inputs") || !strings.Contains(text, "OLD_DATABASE=\n") || !strings.Contains(text, "# REMOVED=\n") {
+	if !strings.Contains(text, "## Loading-stage inputs") || !strings.Contains(text, "OLD_DATABASE=\n") || !strings.Contains(text, "# REMOVED=\n") {
 		t.Fatalf("loading inputs lost:\n%s", text)
 	}
 	if strings.Count(text, "# LEVEL=") != 1 {
@@ -249,7 +249,7 @@ services:
 	if len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "nested/.env") {
 		t.Fatalf("missing warning: %v", result.Warnings)
 	}
-	if strings.Contains(text, "WIRED_PATH=") || !strings.Contains(text, "# WIRED_PATH: stacks/app/fixed.env") {
+	if strings.Contains(text, "WIRED_PATH=") || !strings.Contains(text, "## WIRED_PATH: stacks/app/fixed.env") {
 		t.Fatalf("wiring entry not reference-only:\n%s", text)
 	}
 	if !strings.Contains(text, "MODULE_TOKEN=\n") || !strings.Contains(text, "# IMPLICIT_VALUE=\n") || !strings.Contains(text, "# IMPLICIT_EXPRESSION=source-default") {

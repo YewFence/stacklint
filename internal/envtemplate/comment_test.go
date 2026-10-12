@@ -21,7 +21,7 @@ services:
 	text := string(result.Content)
 	previous := -1
 	for _, word := range []string{"first", "second", "third", "fourth"} {
-		at := strings.Index(text, "# "+word+"\n")
+		at := strings.Index(text, "## "+word+"\n")
 		if at < previous || at < 0 {
 			t.Fatalf("wrong description order for %s:\n%s", word, text)
 		}

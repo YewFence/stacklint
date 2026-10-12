@@ -22,7 +22,7 @@ services:
 	result := generate(t, root, cfg, target)
 	text := string(result.Content)
 	for _, name := range []string{"TOKEN", "MACHINE"} {
-		if strings.Count(text, "\n"+name+"=\n") != 1 || !strings.Contains(text, "# Required; must not be empty.\n"+name+"=") {
+		if strings.Count(text, "\n"+name+"=\n") != 1 || !strings.Contains(text, "## Required\n"+name+"=") {
 			t.Fatalf("required constraint not combined:\n%s", text)
 		}
 	}

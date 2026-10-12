@@ -22,7 +22,7 @@ services:
 `)
 	result := generate(t, root, cfg, target)
 	text := string(result.Content)
-	want := "# Optional AI group; disabled when unset.\n# See upstream docs.\n\n# OpenAI compatible API key.\n# OPENAI_API_KEY=\n"
+	want := "## Optional AI group; disabled when unset.\n## See upstream docs.\n\n## OpenAI compatible API key.\n# OPENAI_API_KEY=\n"
 	if !strings.Contains(text, want) {
 		t.Fatalf("missing preamble block %q in:\n%s", want, text)
 	}
@@ -45,7 +45,7 @@ services:
       VALUE: ${VALUE:-x}
 `)
 	result := generate(t, root, cfg, target)
-	want := "# first\n# second\n#\n\n# VALUE=x\n"
+	want := "## first\n## second\n##\n\n# VALUE=x\n"
 	if !strings.Contains(string(result.Content), want) {
 		t.Fatalf("missing ordered preamble block %q in:\n%s", want, result.Content)
 	}

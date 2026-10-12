@@ -19,7 +19,7 @@ services:
 	write(t, root, "stacks/app/.env.ci", "DATA_ROOT=/synthetic-placeholder\n")
 	cfg.Env.IncludeEnvFiles = []string{"stacks/app/fixed.env"}
 	result := generate(t, root, cfg, target)
-	if !strings.Contains(string(result.Content), "# Required; must not be empty.\nDATA_ROOT=\n") || strings.Contains(string(result.Content), "/synthetic-placeholder") {
+	if !strings.Contains(string(result.Content), "## Required\nDATA_ROOT=\n") || strings.Contains(string(result.Content), "/synthetic-placeholder") {
 		t.Fatalf("required dependency lost:\n%s", result.Content)
 	}
 }
