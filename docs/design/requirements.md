@@ -221,6 +221,10 @@ retries = 2
 - Compose 按文件先插值后合并。最终模型中消失但仍在合并前引用的变量单列加载阶段输入，原表达式和必填约束保留；不会因为 overlay 覆盖字段就漏掉加载要求。
 - `@env` 按变量名关联，文件图内的说明不会随字段覆盖而删除；不建立注释到最终字段的来源追踪。
 
+### `stacklint env ci <targets...>`
+
+为每个组合物化 `@env-example` 值到 stack 目录：base 组合写 `.env.ci`，变体写 `.env.ci.<name>`。这是给 `docker compose config` 等 compose CLI 消费者的构建产物——stacklint 自身不读它；消费者自行决定按需生成还是提交入库。内容是标记的确定性回声（生成头 + 按名排序的赋值，编码与模板赋值共享往返校验）；无标记的组合也写只有生成头的文件，保证 `--env-file` 消费的一致性。不给目标时处理全部组合，支持 `--variant`。`env check` 对已存在的 ci 产物做逐字节漂移检查，不存在不报错；豁免只覆盖模板，不覆盖 ci 产物。
+
 ### `stacklint images digests [--base <ref> | --full | --ci <provider>]`
 
 远端验证镜像引用，语义与既有 images-digest-check 一致：
@@ -259,7 +263,7 @@ retries = 2
 
 - 性能：全仓 `check` 与 `env check` 在 40 个 stack 规模下应在数秒内完成，不随插值表达式数量线性调用外部进程。
 - 确定性：相同输入产生字节一致的输出，所有集合按固定规则排序。
-- 安全：生成时只写目标 stack 的覆盖模板；示例值只是占位，env 生成和诊断不输出接线或隐式 include `.env` 的实际值；registry 访问只发生在 `images digests`。`render` 是配置视图输出，普通与未插值视图均可能携带环境解析值，不能把它当作凭据脱敏输出。
+- 安全：生成时只写目标 stack 的覆盖模板与 CI 产物；示例值只是占位，env 生成和诊断不输出接线或隐式 include `.env` 的实际值；registry 访问只发生在 `images digests`。`render` 是配置视图输出，普通与未插值视图均可能携带环境解析值，不能把它当作凭据脱敏输出。
 - 测试：规则与生成逻辑以表驱动测试和 fixture 仓库覆盖；registry 通过注入 fake 测试，不访问真实网络；不弱化断言。
 
 ## 迁移计划
@@ -335,3 +339,4 @@ retries = 2
 - 示例值声明在 compose.yaml 注释中（`# @env-example VAR: 值`），与 `@env` 家族同一扫描通道：值与需要它的表达式同住一文件，模块变量的示例值在模块 compose.yaml 声明一次即服务全部 include 它的 stack。生成恢复为源 Compose 的纯函数，模板不持有策展状态。`:?` 变量缺示例值时 `env generate` 准备阶段报告完整缺失清单；同一组合文件图内重复声明须一致；挂在有默认值或 wiring 提供的变量上失败；表达式删除后残留标记按过期处理报错。
 - 模块占位变量的跨文件归属规则消解：示例值声明在模块 compose.yaml 里，随模板条目按 `env_group` 前缀分组落入各 stack 的模板。M3 记录的 alloy-agent postgres 变体问题随之关闭，不再需要登记 `ci_env_files`。
 - 接线外部依赖的 dotenv 求值借用示例值；示例值不算运行默认值，不证明部署已提供该变量。
+- compose CLI 消费者（如 `docker compose config` 提取工具）读不懂注释标记，ci 文件因此保留为生成产物：`env ci` 把组合的示例值物化为 `.env.ci`（变体 `.env.ci.<name>`），值唯一来源仍是标记，消费者策略（按需生成或提交入库）不归 stacklint 管。

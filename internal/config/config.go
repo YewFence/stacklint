@@ -208,6 +208,9 @@ func (c *Config) validateEnv() error {
 		if !filepath.IsLocal(v.Stack) || v.Name == "" || v.Name == "base" {
 			return fmt.Errorf("env.variant[%d]: repository-relative stack and nonempty name other than base are required", i)
 		}
+		if strings.ContainsAny(v.Name, "/\\") || strings.Contains(v.Name, "..") {
+			return fmt.Errorf("env.variant[%d]: name %q must be a plain token (it derives the CI artifact filename)", i, v.Name)
+		}
 		if len(v.Files) == 0 {
 			return fmt.Errorf("env.variant[%d]: files must not be empty", i)
 		}

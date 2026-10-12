@@ -56,11 +56,11 @@ func ExitCode(err error) int {
 
 func newEnvCommand() *cobra.Command {
 	command := &cobra.Command{Use: "env", Short: "Generate or check environment override templates"}
-	for _, action := range []string{"generate", "check"} {
+	for _, action := range []string{"generate", "check", "ci"} {
 		var variant, format string
 		subcommand := &cobra.Command{
 			Use:   action + " [targets...]",
-			Short: map[string]string{"generate": "Generate complete environment templates from Compose combinations", "check": "Read-only check for template drift and exemptions"}[action],
+			Short: map[string]string{"generate": "Generate complete environment templates from Compose combinations", "check": "Read-only check for template drift and exemptions", "ci": "Materialize @env-example values as .env.ci artifacts for compose-CLI consumers"}[action],
 			RunE: func(cmd *cobra.Command, args []string) error {
 				if action == "generate" && len(args) == 0 {
 					return fmt.Errorf("env generate requires at least one explicit target")
@@ -159,6 +159,19 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 	var prepared []*envtemplate.Result
 	for _, target := range targets {
 		stack := target.Stack.RelPath
+		if action == "ci" {
+			status := envStatus{Stack: stack, Variant: target.Variant, Output: filepath.Base(envtemplate.CIOutput(target))}
+			result, err := envtemplate.CIArtifact(target)
+			if err != nil {
+				report.failure(2, stack, target.Variant, "env.analysis", err.Error(), "Check the @env-example markers in the combination's Compose files.")
+				status.Status = "error"
+			} else {
+				prepared = append(prepared, result)
+				status.Status = "prepared"
+			}
+			report.Results = append(report.Results, status)
+			continue
+		}
 		output, err := envtemplate.ReadOutput(target)
 		status := envStatus{Stack: stack, Variant: target.Variant, Output: filepath.Base(target.Output)}
 		if err != nil {
@@ -210,7 +223,31 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 		}
 		report.Results = append(report.Results, status)
 	}
-	if action == "generate" && report.ExitCode == 0 {
+	if action == "check" {
+		// Committed CI artifacts are the consumer's choice: absent ones are
+		// fine, present ones must not drift from the markers.
+		for _, target := range targets {
+			ciTarget := target
+			ciTarget.Output = envtemplate.CIOutput(target)
+			existing, err := envtemplate.ReadOutput(ciTarget)
+			if err != nil {
+				report.failure(2, target.Stack.RelPath, target.Variant, "env.output", err.Error(), "Use a regular CI artifact file inside the stack directory.")
+				continue
+			}
+			if existing == nil {
+				continue
+			}
+			expected, err := envtemplate.CIArtifact(target)
+			if err != nil {
+				report.failure(2, target.Stack.RelPath, target.Variant, "env.analysis", err.Error(), "Check the @env-example markers in the combination's Compose files.")
+				continue
+			}
+			if !bytes.Equal(existing, expected.Content) {
+				report.failure(1, target.Stack.RelPath, target.Variant, "env.ci-drift", "CI artifact differs from the @env-example markers", "Run stacklint env ci "+target.Stack.RelPath+" --variant "+target.Variant+" or remove the stale file.")
+			}
+		}
+	}
+	if (action == "generate" || action == "ci") && report.ExitCode == 0 {
 		for _, result := range prepared {
 			if err := envtemplate.Write(result); err != nil {
 				report.failure(2, result.Target.Stack.RelPath, result.Target.Variant, "env.write", "could not atomically replace template: "+err.Error(), "Earlier successful replacements remain written; retry after resolving the filesystem error.")
