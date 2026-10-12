@@ -67,6 +67,22 @@ configs:
 	}
 }
 
+func TestExampleOnSourcedInputAllowed(t *testing.T) {
+	root, cfg, target := setup(t, `name: app
+services:
+  app:
+    image: busybox
+    # @env-source MACHINE: mise run ready
+    # @env-example MACHINE: ci-node
+    hostname: ${MACHINE:?required}
+`)
+	result := generate(t, root, cfg, target)
+	text := string(result.Content)
+	if strings.Contains(text, "MACHINE=") || !strings.Contains(text, "## MACHINE: mise run ready") {
+		t.Fatalf("sourced input with example must stay reference-only in template:\n%s", text)
+	}
+}
+
 func TestExampleOnWiringVariableFails(t *testing.T) {
 	root, cfg, target := setup(t, `name: app
 include:

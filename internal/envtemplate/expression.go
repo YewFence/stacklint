@@ -27,8 +27,12 @@ type input struct {
 	Descriptions []string
 	Preambles    []string
 	Source       string
-	Group        string
-	Example      string
+	// SourcedFromMarker reports that Source came from an @env-source
+	// annotation rather than a wiring occurrence; annotated sources carry no
+	// repository-side value, so an @env-example cannot shadow them.
+	SourcedFromMarker bool
+	Group             string
+	Example           string
 }
 
 func variables(expression string) (map[string]*Behavior, error) {

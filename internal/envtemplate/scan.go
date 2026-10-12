@@ -378,6 +378,7 @@ func (s *scanner) applyAnnotations() error {
 				return fmt.Errorf("input %s has both wiring and @env-source providers", mark.Name)
 			}
 			item.Source = mark.Text
+			item.SourcedFromMarker = true
 		case "@env-example":
 			if item.Example != "" && item.Example != mark.Text {
 				return fmt.Errorf("conflicting @env-example values for %s", mark.Name)
@@ -400,7 +401,7 @@ func (s *scanner) applyAnnotations() error {
 		if item.Example == "" {
 			continue
 		}
-		if item.Source != "" {
+		if item.Source != "" && !item.SourcedFromMarker {
 			return fmt.Errorf("@env-example for %s is shadowed: the variable is already provided by %s", item.Name, item.Source)
 		}
 		allowed := false
