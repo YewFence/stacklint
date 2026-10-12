@@ -1,3 +1,12 @@
+## What's Changed in 0.4.0
+* keep breaking changes from bumping major version by @YewFence
+* chore(gomod-deps): update go modules by @renovate[bot] in [#10](https://github.com/YewFence/stacklint/pull/10)
+* attribute required behavior in multi-variable expressions by @YewFence
+* aggregate fmt:check into the check task by @YewFence
+* let every command run repository-wide without targets by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.3.0...v0.4.0
+
 ## What's Changed in 0.3.0
 * add env ci command materializing @env-example values by @YewFence
 * declare example values in compose.yaml via @env-example by @YewFence
