@@ -84,11 +84,11 @@ func Plan(head []Record, base []Record) []PlannedImage {
 // Checker verifies planned images against remote registries with global and
 // per-registry concurrency limits.
 type Checker struct {
-	Client             Client
-	FloatingTags       []string
+	Client              Client
+	FloatingTags        []string
 	PrivateRepositories []string
-	Jobs               int
-	RegistryJobs       int
+	Jobs                int
+	RegistryJobs        int
 
 	mu             sync.Mutex
 	registryLimits map[string]chan struct{}

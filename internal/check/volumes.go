@@ -43,7 +43,6 @@ func checkVolumeNames(c *ruleContext) []Diagnostic {
 	return diagnostics
 }
 
-
 // explicitVolumeNames scans every Compose file in the include graph with
 // yaml.v3 and records, per top-level volume key, whether any file writes an
 // explicit non-empty name for it.

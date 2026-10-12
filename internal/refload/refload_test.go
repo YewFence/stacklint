@@ -34,9 +34,9 @@ func commitFiles(t *testing.T, files map[string]string) (repoDir string) {
 
 func TestMaterializeExtractsTreeAtRef(t *testing.T) {
 	repoDir := commitFiles(t, map[string]string{
-		"stacklint.toml":                 "[repository]\n",
-		"stacks/edge/app/compose.yaml":   "name: app\n",
-		"stacks/edge/app/.env.example":   "# A=1\n",
+		"stacklint.toml":                  "[repository]\n",
+		"stacks/edge/app/compose.yaml":    "name: app\n",
+		"stacks/edge/app/.env.example":    "# A=1\n",
 		"stacks/compose/mod/compose.yaml": "name: mod\n",
 	})
 
@@ -45,9 +45,9 @@ func TestMaterializeExtractsTreeAtRef(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 
 	for name, want := range map[string]string{
-		"stacklint.toml":                 "[repository]\n",
-		"stacks/edge/app/compose.yaml":   "name: app\n",
-		"stacks/edge/app/.env.example":   "# A=1\n",
+		"stacklint.toml":                  "[repository]\n",
+		"stacks/edge/app/compose.yaml":    "name: app\n",
+		"stacks/edge/app/.env.example":    "# A=1\n",
 		"stacks/compose/mod/compose.yaml": "name: mod\n",
 	} {
 		got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(name)))

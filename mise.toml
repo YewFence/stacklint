@@ -108,7 +108,7 @@ fi
 description = """
 Run read-only checks for Go modules, newlines, typos, formatting, GitHub Actions, lint, build, and tests"""
 run = [
-  { tasks = [ "mod:tidy:check", "newline:check", "typos:check", "build:check" ] },
+  { tasks = [ "mod:tidy:check", "newline:check", "typos:check", "fmt:check", "build:check" ] },
   { task = "leaks:check" },
   { task = "actions:check" },
   { task = "lint" },

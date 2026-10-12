@@ -317,7 +317,7 @@ func validateBindApproval(approval BindApproval, label, repoRoot string, default
 		if err := requireField(variable, variableLabel, "variables"); err != nil {
 			return err
 		}
-	if !validVariableName(variable) {
+		if !validVariableName(variable) {
 			return fmt.Errorf("%w: %s value %q is not a valid environment variable name", ErrValidate, variableLabel, variable)
 		}
 		if variable == defaultVariable {

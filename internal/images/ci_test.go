@@ -24,7 +24,7 @@ func getenvWith(env map[string]string) func(string) string {
 func TestResolveCrowBasePullRequest(t *testing.T) {
 	git := fakeGit{commits: map[string]bool{"refs/remotes/origin/main": true}}
 	base, err := resolveCrowBase(getenvWith(map[string]string{
-		"CI_PIPELINE_EVENT":        "pull_request",
+		"CI_PIPELINE_EVENT":       "pull_request",
 		"CI_COMMIT_TARGET_BRANCH": "main",
 	}), git)
 	require.NoError(t, err)
@@ -40,7 +40,7 @@ func TestResolveCrowBasePullRequestMissingBranch(t *testing.T) {
 
 func TestResolveCrowBasePullRequestUnavailableBase(t *testing.T) {
 	_, err := resolveCrowBase(getenvWith(map[string]string{
-		"CI_PIPELINE_EVENT":        "pull_request",
+		"CI_PIPELINE_EVENT":       "pull_request",
 		"CI_COMMIT_TARGET_BRANCH": "main",
 	}), fakeGit{})
 	require.ErrorContains(t, err, "base is unavailable")

@@ -107,8 +107,8 @@ func newReviewTracker() *reviewTracker {
 	}
 }
 
-func imageKey(compose, service string) string    { return compose + "\x00" + service }
-func bindKey(compose, service string) string     { return compose + "\x00" + service }
+func imageKey(compose, service string) string { return compose + "\x00" + service }
+func bindKey(compose, service string) string  { return compose + "\x00" + service }
 func envFileKey(compose, service, path string) string {
 	return compose + "\x00" + service + "\x00" + path
 }

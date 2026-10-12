@@ -63,13 +63,13 @@ func newImagesCommand() *cobra.Command {
 }
 
 type imagesDigestsReport struct {
-	Version     int               `json:"version"`
-	Mode        string            `json:"mode"` // "full" or "incremental"
-	Base        string            `json:"base,omitempty"`
-	Results     []images.Result   `json:"results"`
+	Version     int                `json:"version"`
+	Mode        string             `json:"mode"` // "full" or "incremental"
+	Base        string             `json:"base,omitempty"`
+	Results     []images.Result    `json:"results"`
 	Diagnostics []check.Diagnostic `json:"diagnostics"`
-	Summary     digestsSummary    `json:"summary"`
-	ExitCode    int               `json:"exit_code"`
+	Summary     digestsSummary     `json:"summary"`
+	ExitCode    int                `json:"exit_code"`
 }
 
 type digestsSummary struct {
@@ -267,11 +267,11 @@ func printDigestsReport(cmd *cobra.Command, report *imagesDigestsReport, format 
 }
 
 type imagesListReport struct {
-	Version     int               `json:"version"`
-	Ref         string            `json:"ref,omitempty"`
-	Images      []images.Record   `json:"images"`
+	Version     int                `json:"version"`
+	Ref         string             `json:"ref,omitempty"`
+	Images      []images.Record    `json:"images"`
 	Diagnostics []check.Diagnostic `json:"diagnostics"`
-	ExitCode    int               `json:"exit_code"`
+	ExitCode    int                `json:"exit_code"`
 }
 
 func runImagesList(cmd *cobra.Command, ref string) error {

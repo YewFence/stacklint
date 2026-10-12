@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	sha256DigestRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	majorTagRe     = regexp.MustCompile(`^v?\d+(?:-(?P<suffix>[0-9A-Za-z][0-9A-Za-z._-]*))?$`)
+	sha256DigestRe  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	majorTagRe      = regexp.MustCompile(`^v?\d+(?:-(?P<suffix>[0-9A-Za-z][0-9A-Za-z._-]*))?$`)
 	majorMinorTagRe = regexp.MustCompile(`^v?\d+\.\d+(?:-(?P<suffix>[0-9A-Za-z][0-9A-Za-z._-]*))?$`)
 )
 

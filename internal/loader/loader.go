@@ -90,7 +90,6 @@ func renderEnv(stack discover.Stack, files []string, templatePath string) (map[s
 	return env, nil
 }
 
-
 func baseOptions(stack discover.Stack, env map[string]string, interpolate bool) []composecli.ProjectOptionsFn {
 	return []composecli.ProjectOptionsFn{
 		composecli.WithWorkingDirectory(stack.Dir),

@@ -64,7 +64,7 @@ func TestCheckTagAndDigestMatch(t *testing.T) {
 
 func TestCheckTagDriftedButDigestExists(t *testing.T) {
 	client := &fakeClient{digests: map[string]string{
-		"app:1.2.3":       digestB,
+		"app:1.2.3":      digestB,
 		"app@" + digestA: digestA,
 	}}
 	result := checkOne(t, client, newChecker(client), "app:1.2.3@"+digestA)

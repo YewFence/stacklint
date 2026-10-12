@@ -5,7 +5,7 @@ import "testing"
 func TestParse(t *testing.T) {
 	tests := []struct {
 		name, line, kind, markerName, text string
-		ok                                  bool
+		ok                                 bool
 	}{
 		{name: "env", line: "# @env VALUE: description", kind: KindEnv, markerName: "VALUE", text: "description", ok: true},
 		{name: "source", line: "# @env-source VALUE: provider", kind: KindSource, markerName: "VALUE", text: "provider", ok: true},
