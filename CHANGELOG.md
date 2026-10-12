@@ -1,3 +1,8 @@
+## What's Changed in 0.4.1
+* allow @env-example on @env-source annotated inputs by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.4.0...v0.4.1
+
 ## What's Changed in 0.4.0
 * keep breaking changes from bumping major version by @YewFence
 * chore(gomod-deps): update go modules by @renovate[bot] in [#10](https://github.com/YewFence/stacklint/pull/10)
