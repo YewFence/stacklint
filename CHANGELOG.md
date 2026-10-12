@@ -1,3 +1,11 @@
+## What's Changed in 0.3.0
+* add env ci command materializing @env-example values by @YewFence
+* declare example values in compose.yaml via @env-example by @YewFence
+* three-tier visual hierarchy in generated templates by @YewFence
+* replace CI placeholder files with in-template example values by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.2.0...v0.3.0
+
 ## What's Changed in 0.2.0
 * ci(deps): update github actions by @renovate[bot] in [#4](https://github.com/YewFence/stacklint/pull/4)
 * chore(mise-deps): update mise tools by @renovate[bot] in [#8](https://github.com/YewFence/stacklint/pull/8)
