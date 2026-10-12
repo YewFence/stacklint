@@ -3,7 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 
 	"github.com/YewFence/stacklint/internal/check"
 	"github.com/YewFence/stacklint/internal/config"
@@ -64,19 +63,9 @@ func runCheck(cmd *cobra.Command, args []string) (*check.Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(args) == 0 {
-		return check.Run(cmd.Context(), cfg, root, approvals, stacks)
-	}
-	var selected []discover.Stack
-	for _, arg := range args {
-		stack, err := discover.MatchTarget(arg, stacks, root)
-		if err != nil {
-			stack, err = discover.MatchTarget(filepath.Join(root, arg), stacks, root)
-			if err != nil {
-				return nil, err
-			}
-		}
-		selected = append(selected, stack)
+	selected, err := selectStacks(args, stacks, root)
+	if err != nil {
+		return nil, err
 	}
 	return check.Run(cmd.Context(), cfg, root, approvals, selected)
 }

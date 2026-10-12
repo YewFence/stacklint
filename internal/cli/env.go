@@ -62,9 +62,6 @@ func newEnvCommand() *cobra.Command {
 			Use:   action + " [targets...]",
 			Short: map[string]string{"generate": "Generate complete environment templates from Compose combinations", "check": "Read-only check for template drift and exemptions", "ci": "Materialize @env-example values as .env.ci artifacts for compose-CLI consumers"}[action],
 			RunE: func(cmd *cobra.Command, args []string) error {
-				if action == "generate" && len(args) == 0 {
-					return fmt.Errorf("env generate requires at least one explicit target")
-				}
 				if format != "json" && format != "text" {
 					return fmt.Errorf("env only supports --format text or json")
 				}
@@ -112,19 +109,11 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 		return report, err
 	}
 	selected := map[string]bool{}
-	if len(args) == 0 {
-		for _, stack := range stacks {
-			selected[stack.RelPath] = true
-		}
+	chosen, err := selectStacks(args, stacks, root)
+	if err != nil {
+		return report, err
 	}
-	for _, arg := range args {
-		stack, err := discover.MatchTarget(arg, stacks, root)
-		if err != nil {
-			stack, err = discover.MatchTarget(filepath.Join(root, arg), stacks, root)
-			if err != nil {
-				return report, err
-			}
-		}
+	for _, stack := range chosen {
 		selected[stack.RelPath] = true
 	}
 	excluded := map[string][]string{}
@@ -182,7 +171,7 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 		}
 		if exemption, exists := exemptions[stack]; exists {
 			status.Status = "exempt"
-			if action == "generate" {
+			if action == "generate" && len(args) > 0 {
 				report.failure(2, stack, target.Variant, "env.exempt", "refusing to generate an exempt stack", "Remove its [[env_exemption]] before generating.")
 				status.Status = "error"
 			} else if envtemplate.Generated(output) {

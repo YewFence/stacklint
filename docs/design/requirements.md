@@ -160,13 +160,13 @@ retries = 2
 - 卷命名：顶层卷渲染后必须是对象且有非空 `name`，并且 `name` 必须在源文件中显式写出（基于源文件关系判断，不依赖 Compose 自动生成的名字）。
 - 过期批准：批准目标不存在、规则恢复默认合规或批准内容与现状不符时报错。局部检查只在批准引用的全部 Compose 文件都在本次范围内时判断过期。
 
-### `stacklint env generate <targets...>` / `stacklint env check [targets...]`
+### `stacklint env generate [targets...]` / `stacklint env check [targets...]`
 
 从 Compose 生成每个 stack 各组合的完整覆盖模板，基础输出缺省为 `.env.example`；每份模板独立使用，不是基础模板上的差量补充。运行默认值只在 Compose 中维护。两个命令支持 `--variant <name>` 和 `--format text|json`。
 
 目标选择：
 
-- 选中 stack 且不指定变体时处理其基础及全部已登记变体；`env check` 不给目标时处理全仓全部组合。
+- 选中 stack 且不指定变体时处理其基础及全部已登记变体；`env generate` 与 `env check` 不给目标时处理全仓全部组合，与其他命令一致。
 - `--variant base` 只选基础，其他名称只选已登记组合；任一选中 stack 不具有所选变体就失败，不回退基础。
 - 不自动加载邻近 overlay。组合与输出名只从 `[[env.variant]]` 获取，名称 `base` 保留，同一 stack 的名称及输出文件名不得重复。
 
@@ -207,7 +207,7 @@ retries = 2
   - `pending`：尚未迁移，或使用了暂不支持的形状，例如 extends。不需要原因。
 - 豁免 stack 的任一被检查模板带有 stacklint 或原 compose-env 生成头时报错，提示删除豁免或恢复手写文件。
 - 全仓检查报告不存在的豁免目标，局部检查不报告范围外的目标过期；env-file-passthrough 的前提按选中组合验证。
-- `env generate` 必须显式给出目标，拒绝对豁免 stack 生成。先准备全部目标的分析结果、编码和输出安全检查；任一准备失败都不写。提交阶段逐文件原子替换，I/O 失败报告实际写入状态，不承诺跨文件事务。拒绝源 Compose、静态输入及输出的符号链接，不覆盖源输入文件。
+- `env generate` 全仓运行时跳过豁免 stack（状态 exempt，不覆盖、不失败）；显式指定豁免 stack 仍拒绝生成。先准备全部目标的分析结果、编码和输出安全检查；任一准备失败都不写。提交阶段逐文件原子替换，I/O 失败报告实际写入状态，不承诺跨文件事务。拒绝源 Compose、静态输入及输出的符号链接，不覆盖源输入文件。
 - `env check` 只读，不写任何文件；缺失或漂移退出 1，配置、用法或无法完成分析退出 2。
 
 多文件：
@@ -243,9 +243,9 @@ retries = 2
 
 输出镜像使用清单（位置：Compose 文件、服务；引用），供外部工具消费。`--ref` 使用按 Git ref 加载。
 
-### `stacklint render [target] [--no-interpolate] --format json`
+### `stacklint render [targets...] [--no-interpolate] --format json`
 
-输出单个 stack 的规范化模型，用于排障。
+输出选中 stack（缺省全部）的规范化模型，用于排障。JSON 为按 stack 路径为键的对象，键按固定顺序排序；任一选中 stack 渲染失败则整体失败退出 2，不输出部分结果。
 
 ## 输出与退出码
 
@@ -284,8 +284,8 @@ retries = 2
 - 渲染输入平铺加载，不建立额外优先级层级。
 - 未插值视图使用 `LoadModelWithContext` 返回合并后的 YAML 字典，不解码为强类型。
 - 不做逐字段 diff 来源追踪；卷命名扫描单文件节点，env 模块分组按配置前缀。
-- `render --format json` 输出 compose-go 规范化模型，不承诺 schema 稳定。
-- 目标匹配目录、Compose 文件或唯一子串片段，零或多命中报错。
+- `render --format json` 输出 compose-go 规范化模型，不承诺 schema 稳定；多目标输出为按 stack 路径为键的对象。
+- 目标匹配目录、Compose 文件或唯一子串片段，零或多命中报错；所有子命令统一目标选择：不给目标即全量，重复命中去重。
 
 ## 已实现决策（M2）
 

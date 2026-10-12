@@ -51,12 +51,12 @@ mise run cli:install
 ```bash
 stacklint --help
 stacklint check                              # all stacks, all variants
-stacklint env generate stacks/example        # regenerate one stack's template
+stacklint env generate                       # regenerate every non-exempt stack's template
 stacklint env check --format json            # drift check, structured output
 stacklint images digests                     # incremental against origin/main
 stacklint images digests --full              # verify every reference
 stacklint images list --format json          # image inventory for tooling
-stacklint render stacks/example --format json
+stacklint render stacks/example --format json  # omit the target to render all stacks
 ```
 
 stacklint finds its configuration by walking up from the working directory to the `stacklint.toml` at the repository root (or via `--config-dir` / `STACKLINT_CONFIG_DIR`). Only `images digests` touches the network; everything else works offline. See the [documentation site](https://YewFence.github.io/stacklint/) for the configuration format, and the [requirements document](https://YewFence.github.io/stacklint/design/requirements) for the full rule semantics and safety contracts.

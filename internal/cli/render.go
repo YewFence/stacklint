@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -17,14 +15,13 @@ func newRenderCommand() *cobra.Command {
 	var noInterpolate bool
 	var format string
 	cmd := &cobra.Command{
-		Use:   "render <target>",
-		Short: "Render a single stack's configuration as JSON",
-		Args:  cobra.ExactArgs(1),
+		Use:   "render [targets...]",
+		Short: "Render Compose configurations as JSON",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if format != "json" {
 				return fmt.Errorf("render only supports --format json, got %q", format)
 			}
-			return runRender(cmd.Context(), args[0], noInterpolate)
+			return runRender(cmd, args, noInterpolate)
 		},
 	}
 	cmd.Flags().BoolVar(&noInterpolate, "no-interpolate", false, "Output uninterpolated view")
@@ -32,42 +29,43 @@ func newRenderCommand() *cobra.Command {
 	return cmd
 }
 
-func runRender(ctx context.Context, target string, noInterpolate bool) error {
-	configDir, err := resolveConfigDir(nil)
+func runRender(cmd *cobra.Command, args []string, noInterpolate bool) error {
+	dir, err := resolveConfigDir(cmd)
 	if err != nil {
 		return err
 	}
-	cfg, err := config.Load(configDir)
+	cfg, err := config.Load(dir)
 	if err != nil {
 		return err
 	}
-	repoRoot := cfg.RepoRoot(configDir)
+	repoRoot := cfg.RepoRoot(dir)
 
 	stacks, err := discover.FindAll(cfg, repoRoot)
 	if err != nil {
 		return err
 	}
-	stack, err := discover.MatchTarget(target, stacks, repoRoot)
+	selected, err := selectStacks(args, stacks, repoRoot)
 	if err != nil {
 		return err
 	}
 
-	rendered, err := loader.Render(ctx, cfg, stack)
+	rendered := map[string]any{}
+	for _, stack := range selected {
+		result, err := loader.Render(cmd.Context(), cfg, stack)
+		if err != nil {
+			return fmt.Errorf("render %s: %w", stack.RelPath, err)
+		}
+		if noInterpolate {
+			rendered[stack.RelPath] = result.Raw
+		} else {
+			rendered[stack.RelPath] = result.Project
+		}
+	}
+	data, err := json.MarshalIndent(rendered, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal render result: %w", err)
 	}
-
-	var out any
-	if noInterpolate {
-		out = rendered.Raw
-	} else {
-		out = rendered.Project
-	}
-	data, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal render result for %s: %w", stack.RelPath, err)
-	}
-	if _, err := fmt.Fprintln(os.Stdout, string(data)); err != nil {
+	if _, err := fmt.Fprintln(cmd.OutOrStdout(), string(data)); err != nil {
 		return fmt.Errorf("write render output: %w", err)
 	}
 	return nil

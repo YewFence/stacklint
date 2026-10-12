@@ -232,9 +232,52 @@ func TestSymlinkOutputNotReadOrReplaced(t *testing.T) {
 	}
 }
 
+func TestEnvGenerateFullRunSkipsExemptStacks(t *testing.T) {
+	root := repository(t)
+	writeEnvFile(t, root, "stacks/exempt/compose.yaml", "name: exempt\nservices:\n  app:\n    image: busybox\n    environment:\n      VALUE: ${VALUE:-one}\n")
+	writeEnvFile(t, root, "approvals.toml", "[[env_exemption]]\nstack = \"stacks/exempt\"\nkind = \"pending\"\n")
+	writeEnvFile(t, root, "stacks/exempt/.env.example", "hand-maintained content\n")
+
+	code, output := executeEnv(t, root, "generate", "--format", "json")
+	if code != 0 {
+		t.Fatalf("full-run generate should skip exempt stacks: %d %s", code, output)
+	}
+	var report struct {
+		Results []struct {
+			Stack  string `json:"stack"`
+			Status string `json:"status"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(output, &report); err != nil {
+		t.Fatalf("invalid JSON: %s", output)
+	}
+	statuses := map[string]string{}
+	for _, result := range report.Results {
+		statuses[result.Stack] = result.Status
+	}
+	if statuses["stacks/app"] != "generated" || statuses["stacks/exempt"] != "exempt" {
+		t.Fatalf("unexpected statuses: %v (%s)", statuses, output)
+	}
+	if _, err := os.Stat(filepath.Join(root, "stacks/app/.env.example")); err != nil {
+		t.Fatalf("app template not generated: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(root, "stacks/exempt/.env.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "hand-maintained content\n" {
+		t.Fatalf("exempt template overwritten: %s", content)
+	}
+
+	code, output = executeEnv(t, root, "generate", "exempt")
+	if code != 2 || !bytes.Contains(output, []byte("refusing to generate an exempt stack")) {
+		t.Fatalf("explicit exempt target accepted: %d %s", code, output)
+	}
+}
+
 func TestEnvUsageAndConfigErrors(t *testing.T) {
 	root := repository(t)
-	for _, args := range [][]string{{"generate"}, {"check", "missing"}, {"check", "app", "--format", "yaml"}} {
+	for _, args := range [][]string{{"check", "missing"}, {"check", "app", "--format", "yaml"}} {
 		code, _ := executeEnv(t, root, args...)
 		if code != 2 {
 			t.Fatalf("usage %v returned %d", args, code)
