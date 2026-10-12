@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/YewFence/stacklint/internal/config"
+	"github.com/YewFence/stacklint/internal/markers"
 	"github.com/compose-spec/compose-go/v2/template"
 	"go.yaml.in/yaml/v3"
 )
@@ -60,11 +61,6 @@ func Generate(ctx context.Context, cfg *config.Config, repoRoot string, target T
 			return nil, fmt.Errorf("output would replace input file %s", graph.relative(source.Path))
 		}
 	}
-	for _, file := range target.CIEnvFiles {
-		if file == target.Output {
-			return nil, fmt.Errorf("output would replace CI input file %s", graph.relative(file))
-		}
-	}
 	scan := &scanner{graph: graph, byName: map[string]*input{}, originals: map[string]bool{}, effectiveExpressions: map[string]bool{}, effectivePass: map[string]bool{}}
 	for _, file := range graph.sources {
 		if file.EnvFile {
@@ -98,6 +94,22 @@ func Generate(ctx context.Context, cfg *config.Config, repoRoot string, target T
 	}
 	if err := scan.applyAnnotations(); err != nil {
 		return nil, err
+	}
+	var missingExamples []string
+	for _, item := range scan.inputs {
+		if item.Example != "" || item.Source != "" {
+			continue
+		}
+		for _, occ := range item.Occurrences {
+			if occ.Behavior != nil && occ.Behavior.Required && occ.Behavior.Nonempty {
+				missingExamples = append(missingExamples, item.Name)
+				break
+			}
+		}
+	}
+	if len(missingExamples) > 0 {
+		slices.Sort(missingExamples)
+		return nil, fmt.Errorf("required inputs have no example value: %s; declare `# @env-example NAME: value` next to the required expression", strings.Join(missingExamples, ", "))
 	}
 	content, err := render(scan.inputs, target, graph.relative)
 	if err != nil {
@@ -335,27 +347,12 @@ func (s *scanner) comments(node *yaml.Node, source sourceFile) {
 }
 
 func (s *scanner) commentText(comment string, source sourceFile) {
-	for _, text := range strings.Split(comment, "\n") {
-		text = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), "#"))
-		if !strings.HasPrefix(text, "@env") {
+	for _, line := range strings.Split(comment, "\n") {
+		kind, name, text, ok := markers.Parse(line)
+		if !ok {
 			continue
 		}
-		kind := "invalid"
-		rest := ""
-		// Longest markers first so @env-preamble is not swallowed by @env.
-		for _, marker := range []string{"@env-preamble", "@env-source", "@env"} {
-			trimmed, ok := strings.CutPrefix(text, marker)
-			if ok && (trimmed == "" || trimmed[0] == ' ' || trimmed[0] == '\t') {
-				kind, rest = marker, trimmed
-				break
-			}
-		}
-		name, description, hasColon := strings.Cut(strings.TrimSpace(rest), ":")
-		name, description = strings.TrimSpace(name), strings.TrimSpace(description)
-		if kind != "invalid" && (!hasColon || !validName(name) || description == "" && kind != "@env-preamble") {
-			kind = "invalid"
-		}
-		s.annotations = append(s.annotations, annotation{Name: name, Kind: kind, Text: description, File: s.graph.relative(source.Path)})
+		s.annotations = append(s.annotations, annotation{Name: name, Kind: kind, Text: text, File: s.graph.relative(source.Path)})
 	}
 }
 
@@ -381,6 +378,11 @@ func (s *scanner) applyAnnotations() error {
 				return fmt.Errorf("input %s has both wiring and @env-source providers", mark.Name)
 			}
 			item.Source = mark.Text
+		case "@env-example":
+			if item.Example != "" && item.Example != mark.Text {
+				return fmt.Errorf("conflicting @env-example values for %s", mark.Name)
+			}
+			item.Example = mark.Text
 		}
 	}
 	if item := s.byName["COMPOSE_PROJECT_NAME"]; item != nil {
@@ -392,6 +394,25 @@ func (s *scanner) applyAnnotations() error {
 	for _, item := range s.inputs {
 		if item.Source == "" && len(item.Occurrences) > 0 {
 			item.Source = item.Occurrences[0].Source
+		}
+	}
+	for _, item := range s.inputs {
+		if item.Example == "" {
+			continue
+		}
+		if item.Source != "" {
+			return fmt.Errorf("@env-example for %s is shadowed: the variable is already provided by %s", item.Name, item.Source)
+		}
+		allowed := false
+		for _, occ := range item.Occurrences {
+			// Wiring dependencies legitimately need example values even when
+			// the wiring expression itself carries no required behavior.
+			if occ.Path == "include.env_file" || occ.Behavior != nil && occ.Behavior.Required {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("@env-example for %s is stale: no required expression or wiring dependency needs an example value", item.Name)
 		}
 	}
 	// Preamble anchors are validated after source backfill: the anchor must

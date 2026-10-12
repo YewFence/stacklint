@@ -52,7 +52,7 @@ func runRender(ctx context.Context, target string, noInterpolate bool) error {
 		return err
 	}
 
-	rendered, err := loader.Render(ctx, cfg, repoRoot, stack)
+	rendered, err := loader.Render(ctx, cfg, stack)
 	if err != nil {
 		return err
 	}

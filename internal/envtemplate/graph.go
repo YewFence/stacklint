@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/YewFence/stacklint/internal/config"
+	"github.com/YewFence/stacklint/internal/wiring"
 	"github.com/compose-spec/compose-go/v2/dotenv"
 	composeloader "github.com/compose-spec/compose-go/v2/loader"
 	"github.com/compose-spec/compose-go/v2/template"
@@ -40,59 +41,49 @@ type graph struct {
 }
 
 func newGraph(cfg *config.Config, repoRoot string, target Target, excluded []string) (*graph, error) {
-	pool, err := probeEnvironment(cfg, repoRoot, target, excluded)
+	pool, err := probeEnvironment(target, excluded)
 	if err != nil {
 		return nil, err
 	}
 	return &graph{cfg: cfg, repoRoot: repoRoot, target: target, pool: pool}, nil
 }
 
-func probeEnvironment(cfg *config.Config, repoRoot string, target Target, excluded []string) (map[string]string, error) {
+// probeEnvironment builds the interpolation pool: the combination's own
+// template via dotenv (live values of exempted, hand-maintained templates),
+// unless excluded as a generated output, plus @env-example marker values from
+// the include graph, which take precedence.
+func probeEnvironment(target Target, excluded []string) (map[string]string, error) {
 	skip := map[string]bool{}
 	for _, path := range excluded {
 		skip[filepath.Clean(path)] = true
 	}
-	type envFile struct {
-		path     string
-		required bool
-	}
-	var files []envFile
-	for _, name := range cfg.Render.EnvFiles {
-		files = append(files, envFile{filepath.Join(target.Stack.Dir, name), false})
-	}
-	for _, module := range cfg.Modules {
-		if module.CIEnvFile != "" {
-			files = append(files, envFile{filepath.Join(repoRoot, filepath.Dir(module.Compose), module.CIEnvFile), false})
-		}
-	}
-	for _, path := range target.CIEnvFiles {
-		files = append(files, envFile{path, true})
-	}
 	pool := map[string]string{}
-	for _, file := range files {
-		if skip[filepath.Clean(file.path)] {
-			if file.required {
-				return nil, fmt.Errorf("CI input %s is a generated output", file.path)
+	if !skip[filepath.Clean(target.Output)] {
+		err := regularFile(target.Output)
+		switch {
+		case err == nil:
+			data, err := os.ReadFile(target.Output)
+			if err != nil {
+				return nil, fmt.Errorf("read static input %s: %w", target.Output, err)
 			}
-			continue
-		}
-		if err := regularFile(file.path); err != nil {
-			if os.IsNotExist(err) && !file.required {
-				continue
+			values, err := dotenv.ParseWithLookup(bytes.NewReader(data), func(string) (string, bool) { return "", false })
+			if err != nil {
+				return nil, fmt.Errorf("cannot parse static input %s", target.Output)
 			}
-			return nil, fmt.Errorf("static input %s: %w", file.path, err)
+			for name, value := range values {
+				pool[name] = value
+			}
+		case os.IsNotExist(err):
+		default:
+			return nil, fmt.Errorf("static input %s: %w", target.Output, err)
 		}
-		data, err := os.ReadFile(file.path)
-		if err != nil {
-			return nil, fmt.Errorf("read static input %s: %w", file.path, err)
-		}
-		values, err := dotenv.ParseWithLookup(bytes.NewReader(data), func(string) (string, bool) { return "", false })
-		if err != nil {
-			return nil, fmt.Errorf("cannot parse static input %s", file.path)
-		}
-		for name, value := range values {
-			pool[name] = value
-		}
+	}
+	examples, err := wiring.ExampleValues(target.Files, target.Stack.Dir)
+	if err != nil {
+		return nil, err
+	}
+	for name, value := range examples {
+		pool[name] = value
 	}
 	return pool, nil
 }

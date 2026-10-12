@@ -157,11 +157,18 @@ func renderEntry(item *input, loading, showFile bool) ([]string, error) {
 		}
 	}
 	if required {
-		if nonempty {
-			lines = append(lines, "## Required")
-		} else {
-			lines = append(lines, "## Required; may be empty")
+		status := "## Required"
+		if !nonempty {
+			status = "## Required; may be empty"
 		}
+		if item.Example != "" {
+			assignment, err := encodeAssignment(item.Name, item.Example)
+			if err != nil {
+				return nil, err
+			}
+			status += "; Example: " + strings.TrimPrefix(assignment, item.Name+"=")
+		}
+		lines = append(lines, status)
 		lines = append(lines, item.Name+"=")
 	} else if simple && !loading && behavior != nil && behavior.Default != nil {
 		if !behavior.EmptyUsesDefault {
@@ -173,6 +180,13 @@ func renderEntry(item *input, loading, showFile bool) ([]string, error) {
 		}
 		lines = append(lines, "# "+assignment)
 	} else {
+		if item.Example != "" {
+			assignment, err := encodeAssignment(item.Name, item.Example)
+			if err != nil {
+				return nil, err
+			}
+			lines = append(lines, "## Example: "+strings.TrimPrefix(assignment, item.Name+"="))
+		}
 		lines = append(lines, "# "+item.Name+"=")
 	}
 	return lines, nil

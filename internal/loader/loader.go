@@ -14,6 +14,7 @@ import (
 
 	"github.com/YewFence/stacklint/internal/config"
 	"github.com/YewFence/stacklint/internal/discover"
+	"github.com/YewFence/stacklint/internal/wiring"
 )
 
 // StackRender is the loaded and rendered state of a single stack.
@@ -27,21 +28,20 @@ type StackRender struct {
 	SourceFiles []string
 }
 
-// Render loads and renders one stack's base combination. Render inputs are
-// flattened into a single interpolation environment with no precedence tiers:
-// render.env_files (relative to the stack directory) and all registered
-// modules' CI env files (relative to each module's Compose directory). Missing
-// files are skipped. The process environment and project .env are never read.
-// All profiles are enabled.
-func Render(ctx context.Context, cfg *config.Config, repoRoot string, stack discover.Stack) (*StackRender, error) {
-	return RenderCombination(ctx, cfg, repoRoot, stack, []string{stack.ComposeFile}, nil)
+// Render loads and renders one stack's base combination. The render
+// environment is the combination's own template (dotenv channel: live values
+// for exempted, hand-maintained templates; missing files are skipped) plus
+// @env-example marker values from the include graph (marker channel, which
+// wins). The process environment and project .env are never read. All
+// profiles are enabled.
+func Render(ctx context.Context, cfg *config.Config, stack discover.Stack) (*StackRender, error) {
+	return RenderCombination(ctx, cfg, stack, []string{stack.ComposeFile}, filepath.Join(stack.Dir, cfg.Env.OutputOrDefault()))
 }
 
 // RenderCombination renders an explicit ordered Compose file list for a stack,
-// appending extraEnvFiles (repository-relative CI inputs, which must exist) to
-// the flattened render environment.
-func RenderCombination(ctx context.Context, cfg *config.Config, repoRoot string, stack discover.Stack, files []string, extraEnvFiles []string) (*StackRender, error) {
-	env, err := renderEnv(cfg, repoRoot, stack, extraEnvFiles)
+// using the combination's templatePath as the dotenv render-input channel.
+func RenderCombination(ctx context.Context, cfg *config.Config, stack discover.Stack, files []string, templatePath string) (*StackRender, error) {
+	env, err := renderEnv(stack, files, templatePath)
 	if err != nil {
 		return nil, err
 	}
@@ -62,45 +62,34 @@ func RenderCombination(ctx context.Context, cfg *config.Config, repoRoot string,
 	}, nil
 }
 
-func renderEnv(cfg *config.Config, repoRoot string, stack discover.Stack, extraEnvFiles []string) (map[string]string, error) {
-	var files []string
-	for _, rel := range cfg.Render.EnvFiles {
-		files = append(files, filepath.Join(stack.Dir, rel))
-	}
-	for _, m := range cfg.Modules {
-		if m.CIEnvFile != "" {
-			files = append(files, filepath.Join(repoRoot, filepath.Dir(m.Compose), m.CIEnvFile))
-		}
-	}
-	for _, rel := range extraEnvFiles {
-		files = append(files, filepath.Join(repoRoot, rel))
-	}
-	return readEnvFiles(files, len(extraEnvFiles))
-}
-
-// readEnvFiles loads the flattened render environment. Missing files are
-// skipped, except the final requiredExtra entries (combination CI inputs),
-// which are explicitly registered and must exist.
-func readEnvFiles(files []string, requiredExtra int) (map[string]string, error) {
+// renderEnv builds the flattened interpolation environment: the
+// combination's own template via dotenv first (missing templates are skipped),
+// then @env-example marker values, which take precedence.
+func renderEnv(stack discover.Stack, files []string, templatePath string) (map[string]string, error) {
 	env := map[string]string{}
-	for i, file := range files {
-		data, err := os.ReadFile(file)
-		if err != nil {
-			if os.IsNotExist(err) && i < len(files)-requiredExtra {
-				continue
-			}
-			return nil, fmt.Errorf("read env file %s: %w", file, err)
-		}
+	data, err := os.ReadFile(templatePath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read env file %s: %w", templatePath, err)
+	}
+	if err == nil {
 		parsed, err := dotenv.Parse(strings.NewReader(string(data)))
 		if err != nil {
-			return nil, fmt.Errorf("parse env file %s: %w", file, err)
+			return nil, fmt.Errorf("parse env file %s: %w", templatePath, err)
 		}
 		for k, v := range parsed {
 			env[k] = v
 		}
 	}
+	examples, err := wiring.ExampleValues(files, stack.Dir)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range examples {
+		env[k] = v
+	}
 	return env, nil
 }
+
 
 func baseOptions(stack discover.Stack, env map[string]string, interpolate bool) []composecli.ProjectOptionsFn {
 	return []composecli.ProjectOptionsFn{

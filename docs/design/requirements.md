@@ -122,7 +122,7 @@ retries = 2
 - 启用全部 profile。
 - 同时提供两种视图：插值后的规范化模型，以及未插值的模型（部分规则需要读取原始插值表达式）。未插值视图通过 `LoadModelWithContext` 返回合并后的 YAML 字典，不解码为强类型以保留原始表达式。
 - 提供 stack 的源文件关系，包括递归 include 图；不追踪合并后每个服务、卷、字段来自哪个文件，不做逐字段 diff。卷命名和 env 注释、顺序扫描单文件 yaml.v3 节点，env 模块分组按 `env_group` 前缀，缺省回退到 required_environment.prefix。
-- 渲染失败的 stack 报告错误并继续检查其他 stack。
+- 渲染失败的 stack 报告错误并继续检查其他 stack；渲染失败的组合仍执行 wiring 等只依赖源文件的规则，缺失 wiring 文件这类根因诊断不被渲染错误掩盖。
 
 ### 按 Git ref 加载
 

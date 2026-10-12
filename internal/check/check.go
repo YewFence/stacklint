@@ -43,27 +43,26 @@ type Report struct {
 // Combination is one deployable file combination of a stack: the implicit base
 // or a registered variant.
 type Combination struct {
-	Stack      discover.Stack
-	Variant    string
-	Files      []string // absolute, ordered
-	CIEnvFiles []string // repository-relative
+	Stack   discover.Stack
+	Variant string
+	Files   []string // absolute, ordered
+	Output  string   // absolute template path
 }
 
 // Combinations resolves the base and all registered variants of a stack.
 func Combinations(cfg *config.Config, repoRoot string, stack discover.Stack) ([]Combination, error) {
-	combos := []Combination{{Stack: stack, Variant: "base", Files: []string{stack.ComposeFile}}}
+	combos := []Combination{{Stack: stack, Variant: "base", Files: []string{stack.ComposeFile}, Output: filepath.Join(stack.Dir, cfg.Env.OutputOrDefault())}}
 	for _, variant := range cfg.Env.Variants {
 		if filepath.ToSlash(filepath.Clean(variant.Stack)) != stack.RelPath {
 			continue
 		}
-		combo := Combination{Stack: stack, Variant: variant.Name}
+		combo := Combination{Stack: stack, Variant: variant.Name, Output: filepath.Join(stack.Dir, variant.Output)}
 		for _, file := range variant.Files {
 			combo.Files = append(combo.Files, filepath.Join(repoRoot, file))
 		}
 		if len(combo.Files) == 0 || combo.Files[0] != stack.ComposeFile {
 			return nil, fmt.Errorf("env.variant %s: first file must be stack %s's main Compose file", variant.Name, variant.Stack)
 		}
-		combo.CIEnvFiles = append(combo.CIEnvFiles, variant.CIEnvFiles...)
 		combos = append(combos, combo)
 	}
 	slices.SortFunc(combos, func(a, b Combination) int {
@@ -187,7 +186,7 @@ func Run(ctx context.Context, cfg *config.Config, repoRoot string, approvals *co
 			return nil, err
 		}
 		for _, combo := range stackCombos {
-			render, err := loader.RenderCombination(ctx, cfg, repoRoot, stack, combo.Files, combo.CIEnvFiles)
+			render, err := loader.RenderCombination(ctx, cfg, stack, combo.Files, combo.Output)
 			if err != nil {
 				report.Results = append(report.Results, Status{Stack: stack.RelPath, Variant: combo.Variant, Status: "render-error"})
 				report.Diagnostics = append(report.Diagnostics, Diagnostic{
@@ -198,6 +197,11 @@ func Run(ctx context.Context, cfg *config.Config, repoRoot string, approvals *co
 					Message:  fmt.Sprintf("could not render combination: %v", err),
 					Hint:     "Fix the Compose files or static render inputs, then re-run stacklint check.",
 				})
+				// The wiring rule reads source files only and produces the
+				// actionable diagnostic when a missing wiring file is what broke
+				// the render, so it still runs.
+				rc := &ruleContext{cfg: cfg, repoRoot: repoRoot, approvals: approvals, combo: combo, allCombos: stackCombos, reviewed: reviewed}
+				report.Diagnostics = append(report.Diagnostics, checkWiring(rc)...)
 				continue
 			}
 			rc := &ruleContext{cfg: cfg, repoRoot: repoRoot, approvals: approvals, combo: combo, allCombos: stackCombos, render: render, reviewed: reviewed}

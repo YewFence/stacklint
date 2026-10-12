@@ -46,16 +46,14 @@ func setupStack(t *testing.T) (string, discover.Stack) {
 }
 
 func baseConfig() *config.Config {
-	return &config.Config{
-		Render: config.RenderConfig{EnvFiles: []string{".env.example", ".env.ci"}},
-	}
+	return &config.Config{}
 }
 
-func TestRenderInterpolatesWithEnvFiles(t *testing.T) {
-	repo, stack := setupStack(t)
+func TestRenderInterpolatesWithTemplate(t *testing.T) {
+	_, stack := setupStack(t)
 	writeFile(t, filepath.Join(stack.Dir, ".env.example"), "NGINX_TAG=1.27\nGREETING=hello\n")
 
-	sr, err := Render(context.Background(), baseConfig(), repo, stack)
+	sr, err := Render(context.Background(), baseConfig(), stack)
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
 	}
@@ -68,12 +66,12 @@ func TestRenderInterpolatesWithEnvFiles(t *testing.T) {
 	}
 }
 
-func TestRenderMissingEnvFilesSkipped(t *testing.T) {
-	repo, stack := setupStack(t)
-	// No env files written; defaults in compose must apply.
-	sr, err := Render(context.Background(), baseConfig(), repo, stack)
+func TestRenderMissingTemplateSkipped(t *testing.T) {
+	_, stack := setupStack(t)
+	// No template written; defaults in compose must apply.
+	sr, err := Render(context.Background(), baseConfig(), stack)
 	if err != nil {
-		t.Fatalf("missing env files should be skipped: %v", err)
+		t.Fatalf("missing template should be skipped: %v", err)
 	}
 	if sr.Project.Services["app"].Image != "nginx:1.27" {
 		t.Errorf("default interpolation: got %q", sr.Project.Services["app"].Image)
@@ -81,10 +79,10 @@ func TestRenderMissingEnvFilesSkipped(t *testing.T) {
 }
 
 func TestRenderRawViewPreservesExpressions(t *testing.T) {
-	repo, stack := setupStack(t)
+	_, stack := setupStack(t)
 	writeFile(t, filepath.Join(stack.Dir, ".env.example"), "GREETING=hello\n")
 
-	sr, err := Render(context.Background(), baseConfig(), repo, stack)
+	sr, err := Render(context.Background(), baseConfig(), stack)
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
 	}
@@ -108,19 +106,24 @@ func TestRenderRawViewPreservesExpressions(t *testing.T) {
 	}
 }
 
-func TestRenderModuleCIEnvFlattened(t *testing.T) {
-	repo, stack := setupStack(t)
-	cfg := baseConfig()
-	cfg.Modules = []config.ModuleConfig{
-		{Compose: "stacks/compose/litestream/compose.yaml", CIEnvFile: ".env.ci.litestream"},
-	}
-	writeFile(t, filepath.Join(repo, "stacks", "compose", "litestream", ".env.ci.litestream"), "GREETING=from-module\n")
+func TestRenderExampleMarkersWinOverTemplate(t *testing.T) {
+	_, stack := setupStack(t)
+	compose := `name: web
+services:
+  app:
+    image: nginx:1.27
+    environment:
+      # @env-example TOKEN: from-marker
+      TOKEN: ${TOKEN:?required}
+`
+	writeFile(t, stack.ComposeFile, compose)
+	writeFile(t, filepath.Join(stack.Dir, ".env.example"), "TOKEN=from-template\n")
 
-	sr, err := Render(context.Background(), cfg, repo, stack)
+	sr, err := Render(context.Background(), baseConfig(), stack)
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
 	}
-	if got := sr.Project.Services["app"].Environment["GREETING"]; got == nil || *got != "from-module" {
-		t.Errorf("module CI env should flatten into render inputs, got %v", got)
+	if got := sr.Project.Services["app"].Environment["TOKEN"]; got == nil || *got != "from-marker" {
+		t.Errorf("example marker should win over template dotenv, got %v", got)
 	}
 }

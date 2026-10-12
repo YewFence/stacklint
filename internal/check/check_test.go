@@ -41,9 +41,6 @@ func (f *fixture) configToml() string {
 deployment_roots = ["stacks/edge", "stacks/app"]
 compose_filenames = ["compose.yaml"]
 
-[render]
-env_files = [".env.example", ".env.ci"]
-
 [ports]
 shared_roots = ["stacks/edge"]
 
@@ -316,11 +313,9 @@ stack = "stacks/app/web"
 name = "postgres"
 files = ["stacks/app/web/compose.yaml", "stacks/app/web/compose.postgres.yaml"]
 output = ".env.postgres.example"
-ci_env_files = ["stacks/app/web/.env.ci.postgres"]
 `)
 	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: "+pinnedImage+"\n")
 	f.write("stacks/app/web/compose.postgres.yaml", "services:\n  db:\n    image: postgres:17\n")
-	f.write("stacks/app/web/.env.ci.postgres", "")
 	report := f.run(t)
 	// The variant-only unpinned postgres image must be caught.
 	if !hasDiagnostic(report, "image", "postgres:17 is not pinned") {
@@ -345,11 +340,9 @@ stack = "stacks/app/web"
 name = "postgres"
 files = ["stacks/app/web/compose.yaml", "stacks/app/web/compose.postgres.yaml"]
 output = ".env.postgres.example"
-ci_env_files = ["stacks/app/web/.env.ci.postgres"]
 `)
 	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: "+pinnedImage+"\n    ports:\n      - published: 5432\n        target: 80\n")
 	f.write("stacks/app/web/compose.postgres.yaml", "services:\n  db:\n    image: "+pinnedImage+"\n    ports:\n      - published: 5432\n        target: 5432\n")
-	f.write("stacks/app/web/.env.ci.postgres", "")
 	report := f.run(t)
 	// base publishes 5432 (web), variant publishes 5432 (web + db). web vs db
 	// in the variant IS a conflict (same combination, different services);
@@ -394,7 +387,6 @@ func TestCheckRenderFailureContinues(t *testing.T) {
 const moduleToml = `
 [[module]]
 compose = "stacks/compose/litestream/compose.yaml"
-ci_env_file = ".env.ci.litestream"
 wiring_file = ".env.litestream"
 wiring_template = ".env.litestream.example"
 optional_wiring_variables = ["LITESTREAM_REPLICA_SCOPE"]
@@ -403,7 +395,6 @@ required_environment = { service = "litestream", prefix = "LITESTREAM_" }
 
 func (f *fixture) writeModule() {
 	f.write("stacks/compose/litestream/compose.yaml", "services:\n  litestream:\n    image: "+pinnedImage+"\n    environment:\n      LITESTREAM_DB: ${LITESTREAM_DB:?required}\n")
-	f.write("stacks/compose/litestream/.env.ci.litestream", "LITESTREAM_DB=/tmp/ci.db\n")
 	f.write("stacks/compose/litestream/.env.litestream.example", "LITESTREAM_DB=\nLITESTREAM_REPLICA_SCOPE=\n")
 }
 
@@ -411,7 +402,7 @@ func TestCheckWiringRule(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml()+moduleToml)
 	f.writeModule()
-	f.write("stacks/app/web/compose.yaml", "name: web\ninclude:\n  - ../../compose/litestream/compose.yaml\nservices:\n  web:\n    image: "+pinnedImage+"\n")
+	f.write("stacks/app/web/compose.yaml", "name: web\ninclude:\n  - path: ../../compose/litestream/compose.yaml\n    env_file: .env.litestream\nservices:\n  web:\n    image: "+pinnedImage+"\n")
 
 	// Missing wiring file.
 	report := f.run(t)
@@ -432,6 +423,14 @@ func TestCheckWiringRule(t *testing.T) {
 	if !hasDiagnostic(report, "wiring", "variables missing from the module template") {
 		t.Fatalf("expected extra variable diagnostic, got %v", rules(report))
 	}
+
+	// An @env-example marker on a wiring-provided variable would shadow it.
+	f.write("stacks/app/web/.env.litestream", "LITESTREAM_DB=/data/app.db\n")
+	f.write("stacks/app/web/compose.yaml", "name: web\ninclude:\n  - path: ../../compose/litestream/compose.yaml\n    env_file: .env.litestream\nservices:\n  web:\n    image: "+pinnedImage+"\n    # @env-example LITESTREAM_DB: /tmp/shadow.db\n")
+	report = f.run(t)
+	if !hasDiagnostic(report, "wiring", "must not provide values") {
+		t.Fatalf("expected shadowing diagnostic, got %v", rules(report))
+	}
 }
 
 func TestCheckOrphanWiringFile(t *testing.T) {
@@ -450,10 +449,10 @@ func TestCheckModuleRequiredEnvironment(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml()+moduleToml)
 	f.writeModule()
-	// LITESTREAM_TOKEN is declared in the module but covered by neither the CI
-	// placeholder pool nor the wiring file, so it renders empty.
+	// LITESTREAM_TOKEN is declared in the module but covered by neither an
+	// example marker nor the wiring file, so it renders empty.
 	f.write("stacks/compose/litestream/compose.yaml", "services:\n  litestream:\n    image: "+pinnedImage+"\n    environment:\n      LITESTREAM_DB: ${LITESTREAM_DB:?required}\n      LITESTREAM_TOKEN: ${LITESTREAM_TOKEN}\n")
-	f.write("stacks/app/web/compose.yaml", "name: web\ninclude:\n  - ../../compose/litestream/compose.yaml\nservices:\n  web:\n    image: "+pinnedImage+"\n")
+	f.write("stacks/app/web/compose.yaml", "name: web\ninclude:\n  - path: ../../compose/litestream/compose.yaml\n    env_file: .env.litestream\nservices:\n  web:\n    image: "+pinnedImage+"\n")
 	f.write("stacks/app/web/.env.litestream", "LITESTREAM_DB=/data/app.db\n")
 	report := f.run(t)
 	if !hasDiagnostic(report, "module_environment", "missing or empty") {

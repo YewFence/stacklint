@@ -24,8 +24,6 @@ func TestCheckCommandExitCodes(t *testing.T) {
 	writeEnvFile(t, root, "stacklint.toml", `[repository]
 deployment_roots = ["stacks"]
 compose_filenames = ["compose.yaml"]
-[render]
-env_files = [".env.example", ".env.ci"]
 `)
 	writeEnvFile(t, root, "stacks/app/compose.yaml", "name: app\nservices:\n  app:\n    image: busybox\n")
 

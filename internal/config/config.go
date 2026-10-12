@@ -15,7 +15,6 @@ import (
 // Config is the repository policy loaded from stacklint.toml.
 type Config struct {
 	Repository  RepositoryConfig  `toml:"repository"`
-	Render      RenderConfig      `toml:"render"`
 	Modules     []ModuleConfig    `toml:"module"`
 	Ports       PortsConfig       `toml:"ports"`
 	BindAddress BindAddressConfig `toml:"bind_address"`
@@ -30,13 +29,8 @@ type RepositoryConfig struct {
 	ComposeFilenames []string `toml:"compose_filenames"`
 }
 
-type RenderConfig struct {
-	EnvFiles []string `toml:"env_files"`
-}
-
 type ModuleConfig struct {
 	Compose                 string                     `toml:"compose"`
-	CIEnvFile               string                     `toml:"ci_env_file"`
 	WiringFile              string                     `toml:"wiring_file"`
 	WiringTemplate          string                     `toml:"wiring_template"`
 	EnvGroup                string                     `toml:"env_group"`
@@ -65,11 +59,10 @@ type EnvConfig struct {
 
 // EnvVariant registers a complete Compose file combination for a stack.
 type EnvVariant struct {
-	Stack      string   `toml:"stack"`
-	Name       string   `toml:"name"`
-	Files      []string `toml:"files"`
-	Output     string   `toml:"output"`
-	CIEnvFiles []string `toml:"ci_env_files"`
+	Stack  string   `toml:"stack"`
+	Name   string   `toml:"name"`
+	Files  []string `toml:"files"`
+	Output string   `toml:"output"`
 }
 
 type ImagesConfig struct {
@@ -166,9 +159,6 @@ func (c *Config) validate() error {
 	if err := requireNoDuplicates("repository.compose_filenames", c.Repository.ComposeFilenames); err != nil {
 		return err
 	}
-	if err := requireNoDuplicates("render.env_files", c.Render.EnvFiles); err != nil {
-		return err
-	}
 	if err := requireNoDuplicates("ports.shared_roots", c.Ports.SharedRoots); err != nil {
 		return err
 	}
@@ -234,7 +224,7 @@ func (c *Config) validateEnv() error {
 		for _, list := range []struct {
 			name  string
 			paths []string
-		}{{"files", v.Files}, {"ci_env_files", v.CIEnvFiles}} {
+		}{{"files", v.Files}} {
 			if err := requireNoDuplicates("env.variant."+list.name, list.paths); err != nil {
 				return err
 			}
@@ -276,6 +266,15 @@ func (c *Config) RepoRoot(configDir string) string {
 		return filepath.Clean(filepath.Join(configDir, c.Repository.Root))
 	}
 	return filepath.Clean(configDir)
+}
+
+// OutputOrDefault returns the base template filename, mirroring the default
+// applied by validation for hand-built configs.
+func (c EnvConfig) OutputOrDefault() string {
+	if c.Output != "" {
+		return c.Output
+	}
+	return ".env.example"
 }
 
 // IsSharedRoot reports whether the deployment root is a shared port root.

@@ -37,7 +37,7 @@ func List(ctx context.Context, cfg *config.Config, repoRoot string, stacks []dis
 			continue
 		}
 		for _, combo := range combos {
-			rendered, err := loader.RenderCombination(ctx, cfg, repoRoot, stack, combo.Files, combo.CIEnvFiles)
+			rendered, err := loader.RenderCombination(ctx, cfg, stack, combo.Files, combo.Output)
 			if err != nil {
 				diagnostics = append(diagnostics, renderDiagnostic(stack.RelPath, combo.Variant, err))
 				continue

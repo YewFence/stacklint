@@ -1,6 +1,7 @@
-// Package wiring derives which registered modules a Compose combination
-// includes and the variable sets of module wiring contracts. The include
-// graph is walked from source YAML so results cover recursive includes.
+// Package wiring derives render-relevant facts from a Compose combination's
+// source YAML: which registered modules it includes, the variable sets of
+// module wiring contracts, and @env-example values. The include graph is
+// walked from source YAML so results cover recursive includes.
 package wiring
 
 import (

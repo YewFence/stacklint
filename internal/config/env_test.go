@@ -16,7 +16,6 @@ stack = "stacks/app"
 name = "local"
 files = ["stacks/app/compose.yaml", "stacks/app/compose.local.yaml"]
 output = ".env.local.example"
-ci_env_files = ["stacks/app/.env.ci.local"]
 `)
 	cfg, err := Load(dir)
 	if err != nil {
@@ -25,8 +24,8 @@ ci_env_files = ["stacks/app/.env.ci.local"]
 	if len(cfg.Env.Variants) != 1 || cfg.Env.Variants[0].Name != "local" || len(cfg.Env.Variants[0].Files) != 2 {
 		t.Fatalf("got %+v", cfg.Env)
 	}
-	if len(cfg.Env.IncludeEnvFiles) != 1 || len(cfg.Env.Variants[0].CIEnvFiles) != 1 {
-		t.Fatalf("static input configuration lost: %+v", cfg.Env)
+	if len(cfg.Env.IncludeEnvFiles) != 1 {
+		t.Fatalf("include env files lost: %+v", cfg.Env)
 	}
 }
 

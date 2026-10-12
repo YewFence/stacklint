@@ -4,6 +4,7 @@ import (
 	"slices"
 
 	"github.com/YewFence/stacklint/internal/interp"
+	"github.com/YewFence/stacklint/internal/markers"
 )
 
 // Behavior describes a verified simple input; complex expressions have no Behavior.
@@ -27,6 +28,7 @@ type input struct {
 	Preambles    []string
 	Source       string
 	Group        string
+	Example      string
 }
 
 func variables(expression string) (map[string]*Behavior, error) {
@@ -51,14 +53,5 @@ func sortedNames[V any](values map[string]V) []string {
 }
 
 func validName(name string) bool {
-	if name == "" {
-		return false
-	}
-	for i, char := range name {
-		if char == '_' || char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' || i > 0 && char >= '0' && char <= '9' {
-			continue
-		}
-		return false
-	}
-	return true
+	return markers.ValidName(name)
 }

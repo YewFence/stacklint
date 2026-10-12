@@ -71,11 +71,11 @@ func writeGoldenRepo(t *testing.T) (string, string) {
 }
 
 func TestRenderGoldenInterpolated(t *testing.T) {
-	repo, stackDir := writeGoldenRepo(t)
+	_, stackDir := writeGoldenRepo(t)
 	cfg := baseConfig()
 	stack := stackAt(stackDir, "stacks/edge/golden")
 
-	sr, err := Render(context.Background(), cfg, repo, stack)
+	sr, err := Render(context.Background(), cfg, stack)
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
 	}
@@ -83,11 +83,11 @@ func TestRenderGoldenInterpolated(t *testing.T) {
 }
 
 func TestRenderGoldenUninterpolated(t *testing.T) {
-	repo, stackDir := writeGoldenRepo(t)
+	_, stackDir := writeGoldenRepo(t)
 	cfg := baseConfig()
 	stack := stackAt(stackDir, "stacks/edge/golden")
 
-	sr, err := Render(context.Background(), cfg, repo, stack)
+	sr, err := Render(context.Background(), cfg, stack)
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
 	}
@@ -95,15 +95,15 @@ func TestRenderGoldenUninterpolated(t *testing.T) {
 }
 
 func TestRenderGoldenMergeOrder(t *testing.T) {
-	repo, stackDir := writeGoldenRepo(t)
+	_, stackDir := writeGoldenRepo(t)
 	cfg := baseConfig()
 	stack := stackAt(stackDir, "stacks/edge/golden")
 
-	sr, err := RenderCombination(context.Background(), cfg, repo, stack,
+	sr, err := RenderCombination(context.Background(), cfg, stack,
 		[]string{
 			filepath.Join(stackDir, "compose.yaml"),
 			filepath.Join(stackDir, "compose.overlay.yaml"),
-		}, nil)
+		}, filepath.Join(stackDir, ".env.example"))
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
 	}
@@ -149,7 +149,7 @@ services:
       MODULE_VALUE: ${MODULE_VALUE:?nested module input required}
 `)
 
-	sr, err := Render(context.Background(), baseConfig(), repo, stackAt(stackDir, "stacks/edge/golden"))
+	sr, err := Render(context.Background(), baseConfig(), stackAt(stackDir, "stacks/edge/golden"))
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
 	}

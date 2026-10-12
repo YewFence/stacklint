@@ -24,12 +24,8 @@ deployment_roots = ["stacks/edge", "stacks/yewyard"]
 module_roots = ["stacks/compose"]
 compose_filenames = ["compose.yaml", "compose.yml"]
 
-[render]
-env_files = [".env.example", ".env.ci"]
-
 [[module]]
 compose = "stacks/compose/litestream/compose.yaml"
-ci_env_file = ".env.ci.litestream"
 wiring_file = ".env.litestream"
 wiring_template = ".env.litestream.example"
 env_group = "LITESTREAM_"
@@ -122,7 +118,7 @@ deployment_roots = ["stacks", "stacks"]
 func TestLoadRejectsModuleWithoutCompose(t *testing.T) {
 	dir := writeConfig(t, `
 [[module]]
-ci_env_file = ".env.ci.litestream"
+wiring_file = ".env.litestream"
 `)
 	_, err := Load(dir)
 	if !errors.Is(err, ErrValidate) {

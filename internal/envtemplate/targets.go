@@ -11,11 +11,10 @@ import (
 
 // Target is one complete, independently deployable Compose combination.
 type Target struct {
-	Stack      discover.Stack
-	Variant    string
-	Files      []string
-	Output     string
-	CIEnvFiles []string
+	Stack   discover.Stack
+	Variant string
+	Files   []string
+	Output  string
 }
 
 // Targets resolves registered combinations, including the implicit base of every stack.
@@ -45,9 +44,6 @@ func Targets(cfg *config.Config, repoRoot string, stacks []discover.Stack) ([]Ta
 		}
 		if target.Files[0] != stack.ComposeFile {
 			return nil, fmt.Errorf("env.variant %s: first file must be stack %s's main Compose file", variant.Name, variant.Stack)
-		}
-		for _, file := range variant.CIEnvFiles {
-			target.CIEnvFiles = append(target.CIEnvFiles, filepath.Join(repoRoot, file))
 		}
 		targets = append(targets, target)
 	}

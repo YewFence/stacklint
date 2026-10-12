@@ -31,7 +31,7 @@ func setup(t *testing.T, compose string) (string, *config.Config, envtemplate.Ta
 	root := t.TempDir()
 	main := write(t, root, "stacks/app/compose.yaml", compose)
 	stack := discover.Stack{Dir: filepath.Dir(main), ComposeFile: main, RelPath: "stacks/app"}
-	cfg := &config.Config{Env: config.EnvConfig{Output: ".env.example"}, Render: config.RenderConfig{EnvFiles: []string{".env.example", ".env.ci"}}}
+	cfg := &config.Config{Env: config.EnvConfig{Output: ".env.example"}}
 	target := envtemplate.Target{Stack: stack, Variant: "base", Files: []string{main}, Output: filepath.Join(stack.Dir, ".env.example")}
 	return root, cfg, target
 }
@@ -46,24 +46,28 @@ func generate(t *testing.T, root string, cfg *config.Config, target envtemplate.
 }
 
 func TestExpressionSemantics(t *testing.T) {
-	tests := []struct{ name, expression, want string }{
-		{"soft default", "${VALUE:-default}", "# VALUE=default\n"},
-		{"hard default", "${VALUE-default}", "## Default applies only when unset, not when empty.\n# VALUE=default\n"},
-		{"required nonempty", "${VALUE:?required}", "## Required\nVALUE=\n"},
-		{"required empty allowed", "${VALUE?required}", "## Required; may be empty\nVALUE=\n"},
-		{"plain", "${VALUE}", "# VALUE=\n"},
-		{"unbraced", "$VALUE", "# VALUE=\n"},
-		{"empty default", "${VALUE:-}", "# VALUE=\n"},
-		{"alternate", "${VALUE:+alternate}", "## Expression at services.app.environment.TEST:\n## ${VALUE:+alternate}\n# VALUE=\n"},
-		{"set alternate", "${VALUE+alternate}", "## Expression at services.app.environment.TEST:\n## ${VALUE+alternate}\n# VALUE=\n"},
-		{"repeated", "${VALUE:-one}/${VALUE:-two}", "## ${VALUE:-one}/${VALUE:-two}\n# VALUE=\n"},
-		{"nested required", "${VALUE:-https://${DOMAIN:?required}}", "# DOMAIN=\n"},
-		{"conditional required", "${ENABLE:+${VALUE:?required}}", "# VALUE=\n"},
-		{"required message dependency", "${VALUE:?${MESSAGE:?provide message}}", "# MESSAGE=\n"},
+	tests := []struct{ name, expression, marker, want string }{
+		{"soft default", "${VALUE:-default}", "", "# VALUE=default\n"},
+		{"hard default", "${VALUE-default}", "", "## Default applies only when unset, not when empty.\n# VALUE=default\n"},
+		{"required nonempty", "${VALUE:?required}", "example-value", "## Required; Example: example-value\nVALUE=\n"},
+		{"required empty allowed", "${VALUE?required}", "", "## Required; may be empty\nVALUE=\n"},
+		{"plain", "${VALUE}", "", "# VALUE=\n"},
+		{"unbraced", "$VALUE", "", "# VALUE=\n"},
+		{"empty default", "${VALUE:-}", "", "# VALUE=\n"},
+		{"alternate", "${VALUE:+alternate}", "", "## Expression at services.app.environment.TEST:\n## ${VALUE:+alternate}\n# VALUE=\n"},
+		{"set alternate", "${VALUE+alternate}", "", "## Expression at services.app.environment.TEST:\n## ${VALUE+alternate}\n# VALUE=\n"},
+		{"repeated", "${VALUE:-one}/${VALUE:-two}", "", "## ${VALUE:-one}/${VALUE:-two}\n# VALUE=\n"},
+		{"nested required", "${VALUE:-https://${DOMAIN:?required}}", "", "# DOMAIN=\n"},
+		{"conditional required", "${ENABLE:+${VALUE:?required}}", "", "# VALUE=\n"},
+		{"required message dependency", "${VALUE:?${MESSAGE:?provide message}}", "", "# MESSAGE=\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			root, cfg, target := setup(t, "name: app\nservices:\n  app:\n    image: busybox\n    environment:\n      TEST: '"+tt.expression+"'\n")
+			marker := ""
+			if tt.marker != "" {
+				marker = "      # @env-example VALUE: " + tt.marker + "\n"
+			}
+			root, cfg, target := setup(t, "name: app\nservices:\n  app:\n    image: busybox\n    environment:\n"+marker+"      TEST: '"+tt.expression+"'\n")
 			result := generate(t, root, cfg, target)
 			if !strings.Contains(string(result.Content), tt.want) {
 				t.Fatalf("missing %q in:\n%s", tt.want, result.Content)
@@ -168,6 +172,7 @@ services:
       - "${BIND:-127.0.0.1}:8000:80"
     environment:
       LEVEL: ${LEVEL:-info}
+      # @env-example OLD_DATABASE: postgres://loading-stage
       DATABASE: ${OLD_DATABASE:?must be set}
       REMOVE: ${REMOVED:-old}
 `)
@@ -226,6 +231,7 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME}-sidecar
     environment:
       WIRED_PATH: ${WIRED_PATH:?path required}
+      # @env-example MODULE_TOKEN: ci-token
       MODULE_TOKEN: ${MODULE_TOKEN:?token required}
 `)
 	write(t, root, "nested/compose.yaml", `services:
@@ -238,7 +244,6 @@ services:
 	sentinel := "synthetic-do-not-print-bf7c192"
 	write(t, root, "nested/.env", "IMPLICIT_VALUE="+sentinel+"\nIMPLICIT_EXPRESSION="+sentinel+"\n")
 	write(t, root, "stacks/app/fixed.env", "WIRED_PATH=/data/app.db\n")
-	write(t, root, "stacks/app/.env.ci", "MODULE_TOKEN="+sentinel+"\n")
 	write(t, root, "stacks/app/.env", "LOCAL="+sentinel+"\n")
 	cfg.Modules = []config.ModuleConfig{{Compose: "modules/compose.yaml", WiringFile: "fixed.env", EnvGroup: "MODULE_"}}
 	result := generate(t, root, cfg, target)
@@ -272,13 +277,13 @@ include:
 services:
   app:
     image: busybox
+    # @env-example DATA_ROOT: /data
 `)
 	write(t, root, "modules/compose.yaml", "services:\n  sidecar:\n    image: busybox\n    environment:\n      DB_PATH: ${DB_PATH:?required}\n")
 	write(t, root, "stacks/app/fixed.env", "DB_PATH=${DATA_ROOT}/app.db\n")
-	write(t, root, "stacks/app/.env.ci", "DATA_ROOT=/synthetic-ci-root\n")
 	cfg.Env.IncludeEnvFiles = []string{"stacks/app/fixed.env"}
 	result := generate(t, root, cfg, target)
-	if !strings.Contains(string(result.Content), "# DATA_ROOT=\n") || strings.Contains(string(result.Content), "/synthetic-ci-root") {
+	if !strings.Contains(string(result.Content), "## Example: /data\n# DATA_ROOT=\n") || strings.Contains(string(result.Content), "/data/app.db") {
 		t.Fatalf("dependency lost or placeholder leaked:\n%s", result.Content)
 	}
 }

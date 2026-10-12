@@ -29,8 +29,6 @@ func repository(t *testing.T) string {
 	writeEnvFile(t, root, "stacklint.toml", `[repository]
 deployment_roots = ["stacks"]
 compose_filenames = ["compose.yaml"]
-[render]
-env_files = [".env.example", ".env.ci"]
 `)
 	writeEnvFile(t, root, "stacks/app/compose.yaml", "name: app\nservices:\n  app:\n    image: busybox\n    environment:\n      VALUE: ${VALUE:-one}\n      OPTIONAL:\n")
 	return root
@@ -131,10 +129,8 @@ stack = "stacks/app"
 name = "local"
 files = ["stacks/app/compose.yaml", "stacks/app/compose.local.yaml"]
 output = ".env.local.example"
-ci_env_files = ["stacks/app/.env.ci.local"]
 `)
 	writeEnvFile(t, root, "stacks/app/compose.local.yaml", "services:\n  app:\n    environment:\n      VALUE: ${VALUE:-local}\n")
-	writeEnvFile(t, root, "stacks/app/.env.ci.local", "VALUE=placeholder-not-a-default\n")
 	code, output := executeEnv(t, root, "generate", "app", "--format", "json")
 	if code != 0 {
 		t.Fatalf("expected both variants: %d %s", code, output)
@@ -144,7 +140,7 @@ ci_env_files = ["stacks/app/.env.ci.local"]
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Contains(data, []byte(test.want)) || bytes.Contains(data, []byte("placeholder-not-a-default")) {
+		if !bytes.Contains(data, []byte(test.want)) {
 			t.Fatalf("bad variant %s: %s", test.file, data)
 		}
 	}
