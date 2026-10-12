@@ -104,7 +104,14 @@ func Variables(expression string) (map[string]*Behavior, error) {
 		empty, emptyErr := evaluate(emptyValues)
 		if absentErr != nil {
 			var required *template.MissingRequiredError
-			if !errors.As(absentErr, &required) || required.Variable != name || len(names) != 1 {
+			if !errors.As(absentErr, &required) || required.Variable != name {
+				continue
+			}
+			// A required message embedding further variables (e.g.
+			// ${VALUE:?${MESSAGE:?...}}) stays complex: the error branch queries
+			// variables the successful evaluation never touches, so behavior
+			// attribution would be unsound.
+			if queriesErrorBranch(expression, all, missing) {
 				continue
 			}
 			result[name] = &Behavior{Required: true, Nonempty: emptyErr != nil}
@@ -155,6 +162,28 @@ func Names(expression string) ([]string, error) {
 		return nil, err
 	}
 	return sortedNames(variables), nil
+}
+
+// queriesErrorBranch reports whether evaluating expression without the removed
+// variable queries any variable that the fully-provided evaluation never
+// touches, which means the error message embeds variable references.
+func queriesErrorBranch(expression string, all, missing map[string]string) bool {
+	queried := func(values map[string]string) map[string]bool {
+		seen := map[string]bool{}
+		_, _ = template.SubstituteWithOptions(expression, func(name string) (string, bool) {
+			seen[name] = true
+			value, ok := values[name]
+			return value, ok
+		}, template.WithoutLogging)
+		return seen
+	}
+	success := queried(all)
+	for name := range queried(missing) {
+		if !success[name] {
+			return true
+		}
+	}
+	return false
 }
 
 func probeMarker(expression, name string) string {

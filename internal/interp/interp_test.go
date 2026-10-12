@@ -56,6 +56,19 @@ func TestVariablesBehavior(t *testing.T) {
 	if behavior == nil || !behavior.Required || !behavior.Nonempty {
 		t.Fatalf("expected required nonempty, got %+v", behavior)
 	}
+
+	variables, err = interp.Variables(`{"a": "${OTHER:-x}", "password": "${TOKEN:?required}"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	behavior = variables["TOKEN"]
+	if behavior == nil || !behavior.Required || !behavior.Nonempty {
+		t.Fatalf("expected required nonempty alongside other variables, got %+v", behavior)
+	}
+	behavior = variables["OTHER"]
+	if behavior == nil || behavior.Default == nil || *behavior.Default != "x" {
+		t.Fatalf("expected soft default x alongside other variables, got %+v", behavior)
+	}
 }
 
 func TestInvalidExpression(t *testing.T) {

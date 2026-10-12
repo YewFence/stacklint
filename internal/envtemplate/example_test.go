@@ -43,6 +43,30 @@ services:
 	}
 }
 
+func TestExampleInMultiVariableConfigContent(t *testing.T) {
+	root, cfg, target := setup(t, `name: app
+services:
+  app:
+    image: busybox
+    configs:
+      - source: app-config
+        target: /etc/app/config.json
+configs:
+  # @env-example TOKEN: s3cret
+  app-config:
+    content: |
+      {
+        "level": "${LEVEL:-info}",
+        "password": "${TOKEN:?required}"
+      }
+`)
+	result := generate(t, root, cfg, target)
+	text := string(result.Content)
+	if !strings.Contains(text, "## Required; Example: s3cret") {
+		t.Fatalf("example missing for required variable in multi-variable config content:\n%s", text)
+	}
+}
+
 func TestExampleOnWiringVariableFails(t *testing.T) {
 	root, cfg, target := setup(t, `name: app
 include:
@@ -93,7 +117,7 @@ services:
 	if at < 0 {
 		t.Fatalf("example missing:\n%s", text)
 	}
-	line := text[at+len(marker):strings.Index(text[at:], "\n")+at]
+	line := text[at+len(marker) : strings.Index(text[at:], "\n")+at]
 	parsed, err := dotenv.ParseWithLookup(strings.NewReader("VALUE="+line+"\n"), func(string) (string, bool) { return "", false })
 	if err != nil || parsed["VALUE"] != `it's a "quoted" value` {
 		t.Fatalf("example encoding does not round trip: %q, %v", line, err)
