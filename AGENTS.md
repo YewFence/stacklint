@@ -7,7 +7,7 @@ This project is in early development and does not require backward compatibility
 - 语义以 compose-go 为准：插值、合并、include、dotenv 一律复用 compose-go，不自写解析器或正则模拟。镜像引用只用 `distribution/reference`，registry 访问只用 regclient。
 - 渲染双视图：同时保留插值后的规范化模型与未插值模型，规则按需要从对应视图读取，不用正则提取插值变量。
 - 无来源 diff：不做"合并后字段来自哪个文件"的逐字段追踪。卷命名扫单文件 yaml.v3；env 归类用逐文件节点顺序 + `[[module]].env_group` 前缀按名匹配。
-- 渲染输入平铺：`render.env_files` 与所有 `[[module]].ci_env_file` 并列进同一渲染环境，无优先级分层；不读进程环境、不读项目 `.env`。
+- 渲染输入平铺：各组合的覆盖模板是唯一渲染输入——生成模板解析示例值标记，豁免模板走 dotenv 活赋值，两通道无优先级分层；不读进程环境、不读项目 `.env`。
 - 默认失败：无法确认完整性时报错，不输出看似完整的结果；遇到不认识的输入形状直接失败，不猜测语义。
 - 确定性：相同输入产生字节一致的输出，所有集合按固定规则排序。
 - 配置文件是仓库根的 `stacklint.toml`（非 `.stacklint/`）；段缺失允许，段内未知键报错。

@@ -26,10 +26,6 @@ stacklint reads all repository policy from a `stacklint.toml` at the repository 
 deployment_roots = ["stacks"]
 compose_filenames = ["compose.yaml", "compose.yml"]
 
-[render]
-# Static interpolation inputs, flattened with no precedence tiers
-env_files = [".env.example", ".env.ci"]
-
 [env]
 # Generated override template filename inside each stack
 output = ".env.example"

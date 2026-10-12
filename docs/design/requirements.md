@@ -33,9 +33,9 @@ stacklint 用 Go 直接复用 compose-go、`distribution/reference` 和 regclien
 - 变体：同一个 stack 的替代部署组合，由有序 Compose 文件列表定义；一次部署只选择其中一个组合，不把不同变体当作同时部署的 stack。每个 stack 隐式具有 `base` 基础组合。
 - 部署根目录：配置中声明的、在其下发现 stack 的目录，例如 `stacks/edge`。
 - 共享模块：不可独立部署、被 stack 通过 `include` 引用的 Compose 模块。
-- 静态渲染输入：检查时为插值提供值的受版本控制文件，例如 `.env.example`、`.env.ci` 和模块 CI 占位 env。
+- 静态渲染输入：检查时为插值提供值的受版本控制内容，即各组合自己的覆盖模板。生成模板以示例值标记注释提供值，豁免（手写或上游同步）模板以 dotenv 活赋值提供值。
 - 批准：对某条规则的显式例外记录。
-- 覆盖模板：stack 目录下自动生成的 `.env.example`，列出可覆盖的部署输入。
+- 覆盖模板：stack 目录下自动生成的 `.env.example`，列出可覆盖的部署输入，同时以示例值标记充当该组合的静态渲染输入。
 
 ## 配置
 
@@ -56,7 +56,7 @@ CLI 从一个配置目录读取全部策略，按以下优先级确定，命中�
 - `stacklint.toml`：仓库策略，必需。
 - `approvals.toml`：全部批准与豁免记录，可选；不存在等价于没有任何批准。
 
-`stacklint.toml` 中的 `repository.root` 相对配置目录解析，缺省为配置目录本身。部署根、模块 Compose、`env.include_env_files`、变体的 stack、files、ci_env_files 使用仓库相对路径；`render.env_files` 是各 stack 内的相对文件名，模块的 ci_env_file 相对模块 Compose 目录，wiring_file 相对引用模块的项目目录。env 输出必须是 stack 内的文件名，不能是部署 `.env` 或 `.env.secrets`。未知键、错误类型、重复项均失败。
+`stacklint.toml` 中的 `repository.root` 相对配置目录解析，缺省为配置目录本身。部署根、模块 Compose、`env.include_env_files`、变体的 stack、files 使用仓库相对路径；wiring_file 相对引用模块的项目目录。env 输出必须是 stack 内的文件名，不能是部署 `.env` 或 `.env.secrets`。未知键、错误类型、重复项均失败。
 
 示意（以一个 stacks 仓库为例，字段名在实现时定稿）：
 
@@ -66,13 +66,8 @@ deployment_roots = ["stacks/edge", "stacks/yewyard", "stacks/stump"]
 module_roots = ["stacks/compose"]
 compose_filenames = ["compose.yaml", "compose.yml"]
 
-[render]
-# 所有渲染输入平铺加载，无优先级分层；不存在的文件跳过
-env_files = [".env.example", ".env.ci"]
-
 [[module]]
 compose = "stacks/compose/litestream/compose.yaml"
-ci_env_file = ".env.ci.litestream"
 wiring_file = ".env.litestream"
 wiring_template = ".env.litestream.example"
 # 可选：env 模板的模块分组前缀，缺省回退到 required_environment.prefix
@@ -99,8 +94,6 @@ name = "postgres"
 # 首个文件必须是 stack 的主 Compose 文件；顺序就是 compose-go 的合并顺序
 files = ["stacks/edge/alloy-agent/compose.yaml", "stacks/edge/alloy-agent/compose.postgres.yaml"]
 output = ".env.postgres.example"
-# 可选：追加进同一静态分析输入池；显式登记的文件必须存在
-ci_env_files = ["stacks/edge/alloy-agent/.env.ci.postgres"]
 
 [images]
 floating_tags = ["latest", "main"]
@@ -123,7 +116,7 @@ retries = 2
 
 ### 加载与渲染
 
-- 用 compose-go loader 加载 stack；所有 `render.env_files` 与已注册模块的 `ci_env_file` 平铺注入同一项目环境，按配置顺序加载，不建立额外优先级层级。模块 CI 占位 env 无条件加载，不依赖 include 图。
+- 用 compose-go loader 加载 stack；渲染输入是组合自己的覆盖模板：生成模板从示例值标记注释解析值，豁免模板用 compose-go dotenv 原生加载其活赋值。两条通道平铺注入同一项目环境，标记值优先，不建立额外优先级层级；模板不存在时跳过对应通道。
 - include 自带的 `env_file`（例如模块 wiring 文件）保持 Compose 原生优先级，低于项目级输入。
 - 不读取进程环境，不加载项目目录下的 `.env`。
 - 启用全部 profile。
@@ -160,7 +153,7 @@ retries = 2
 - 基础结构：渲染结果必须有非空顶层 `name` 和非空 `services`。
 - 镜像引用：digest 必须是 `sha256:` 加 64 位小写十六进制；空 tag 和格式错误的 digest 不可批准。未固定 digest 的引用需要 `[[image]]` 批准，绑定 Compose 文件、服务、仓库名和规则，规则为 `major`、`major-minor`、`floating-tag`、`exact-tag` 之一，可带 `tag` 或 `suffix`。已固定 digest 时对应批准视为冗余并报错。
 - 服务级 `env_file`：解析后指向 stack 目录 `.env` 的服务级 env_file 需要 `[[env_file]]` 批准；指向其他文件不受此规则约束。
-- 模块 wiring：stack include 了已注册模块时，stack 目录必须有对应 wiring 文件，变量集合等于模块模板去掉可选变量；静态渲染输入不得重复声明 wiring 变量；`.env.ci` 不得声明模块 CI 占位变量；未 include 模块却存在 wiring 文件视为孤儿文件。
+- 模块 wiring：stack include 了已注册模块时，stack 目录必须有对应 wiring 文件，变量集合等于模块模板去掉可选变量；静态渲染输入不得重复声明 wiring 变量，示例值标记不得为 wiring 变量提供值；未 include 模块却存在 wiring 文件视为孤儿文件。
 - 模块必需环境：按 `required_environment` 检查模块服务渲染后的对应变量非空，且未插值视图中至少声明了一个这样的变量。
 - 宿主机绑定变量：从未插值视图读取端口的宿主机 IP 插值变量（短语法前缀或长语法 `host_ip`），只能是 `bind_address.default_variable`；其他变量需要 `[[bind_address]]` 批准，变量集合必须完全一致。变量提取使用插值分析能力，不用正则。
 - 发布端口唯一：每个分组内同一端口和协议只能发布一次，端口范围展开计算。重复需要 `[[published_port]]` 批准，binding 集合（Compose 文件、服务、宿主机 IP）必须完全一致。
@@ -189,13 +182,15 @@ retries = 2
 - `# @env VAR: 说明` 为变量添加说明，可选，可重复，相同说明去重，不同说明按源顺序保留。
 - `# @env-source VAR: 提供方` 声明外部提供的输入，例如 `mise run ready`。这类输入只进入末尾的来源参考，不提供赋值入口。同名来源必须一致。
 - `# @env-preamble VAR: 说明` 为一组相邻变量添加组级前导说明，按锚变量名关联，发射为该变量条目之前的独立注释段落。可重复，按源顺序保留，相同文本去重；允许空文本发射空注释行，用于多段落分隔。锚变量必须在该组合的模板中有赋值条目；锚不存在，或锚是 `@env-source` 等无赋值条目的外部提供输入时失败。模块分组 section 内的锚照常工作，前导段落落在锚所在 section 内。
+- `# @env-example VAR: 值` 为渲染需要值、wiring 未提供、又无默认值的变量声明示例值，供检查渲染与模板状态行使用。`:?` 变量必须声明，缺失时 `env generate` 在准备阶段报告完整缺失清单；`?` 变量可选，用于空值会破坏渲染的场景（例如空端口）。同一组合的文件图内重复声明必须一致；挂在有默认值或 wiring 提供的变量上失败；表达式删除后残留标记按过期处理报错。
 - `COMPOSE_PROJECT_NAME` 自动归属于 Docker Compose，不能另行声明。
 - 标记格式错误、引用不存在的变量时失败。
 
 输出语义：
 
+- 视觉层级分三级：`##` 承载全部元信息行（生成头、说明、Expression at、表达式原文、前导段落、状态行），单个 `#` 只用于可取消注释的赋值入口，裸行只用于必填空赋值。扫描单个 `#` 即可找到全部可选覆盖入口。
 - 固定默认值输出为注释赋值，例如 `# VAR=value`，复制模板不会把默认值固化成覆盖项。
-- 无条件必填输出为空赋值，并区分 `:?`（不得为空）与 `?`（允许为空）。
+- 无条件必填输出为空赋值：`:?`（不得为空）带状态行 `## Required; Example: <值>`，`?`（允许为空）带 `## Required; may be empty`。Example 值来自 compose.yaml 的 `@env-example` 声明，编码与赋值共享 dotenv 往返校验；必填条目保持空赋值，复制模板后未填的必填项仍由 `:?` 在部署渲染时失败。
 - 无值透传输出为注释空入口，不把“未设置”变成空字符串。
 - 嵌套派生、条件分支、替代值、同字段重复引用等复杂情况保留完整原表达式和位置，不计算成固定值，也不把内层必填当成全局必填。例如 `${URL:-https://${DOMAIN:?...}}` 中的 `DOMAIN` 只在 `URL` 未设置时必填。
 - 同一组合的有效字段中，同名变量有不一致的简单默认行为时生成失败。明确的无条件必填约束与直接引用或无值透传合并，以必填约束为准。不同变体之间不比较默认值；overlay 已替换的旧默认值不算第二个有效默认值。
@@ -205,6 +200,7 @@ retries = 2
 覆盖范围与豁免：
 
 - 每个组合必须满足以下之一：已提交的模板与生成结果逐字节一致；或该 stack 在 `approvals.toml` 中有一条 `[[env_exemption]]`。豁免绑定整个 stack，覆盖基础及全部变体。
+- 生成是源 Compose 的纯函数，模板不持有任何策展状态，漂移检查逐字节比较。示例值不合法导致渲染失败（例如端口须为数字）时报错并定位变量，修正 compose.yaml 中的 `@env-example` 声明即可。
 - 豁免绑定 stack 目录，`kind` 为以下之一：
   - `env-file-passthrough`：服务级 `env_file` 透传项目 `.env`，示例需要承载上游应用的大规模接口。前提是 Compose 中确实存在这种透传；不再存在时过期。需要填写原因。
   - `upstream`：`.env.example` 同步自上游项目。需要填写原因和上游来源。
@@ -219,8 +215,8 @@ retries = 2
 - 支持 include 短/长语法、递归 include、显式有序 overlay、YAML 锚点/merge key 和 Compose 的 `!reset` / `!override`。extends、label_file、其他未知标签和动态文件图形状明确失败。合并完全由 compose-go 完成，不复制或生成临时 Compose 文件图。
 - include 的 path、project_directory、env_file 路径必须固定；不接受远端 Compose 资源，不允许部署输入切换文件图。
 - 只有 `env.include_env_files` 和已注册模块 wiring_file 对应的 include 显式 env_file 可读取；不以 Git 跟踪状态推断授权。固定接线键只列提供文件，不提供赋值入口，不输出实际接线值；同名输入在不同 include 作用域来源不一致时失败。
-- 接线文件的外部依赖可以借用静态占位值完成 dotenv 求值，但真实依赖仍进入模板；它们有 `@env-source` 时只列来源参考。CI 占位值不算运行默认值，也不证明部署已提供该变量。不能缩写的接线依赖保守显示接线文件引用，不输出派生值。
-- env 分析复用 render 静态输入池并追加变体 ci_env_files，全部平铺加载；排除该 stack 所有生成输出，防止旧模板影响新模板。不读主项目部署环境或进程环境。
+- 接线文件的外部依赖可以借用模板示例值完成 dotenv 求值，但真实依赖仍进入模板；它们有 `@env-source` 时只列来源参考。示例值不算运行默认值，也不证明部署已提供该变量。不能缩写的接线依赖保守显示接线文件引用，不输出派生值。
+- env 分析排除该 stack 所有生成输出，防止旧模板影响新模板。不读主项目部署环境或进程环境。
 - include 默认 `.env` 存在时 warning 后继续 compose-go 原生加载，不将其中的值认作模板默认或批准的接线来源。未插值模型也可能含这类值，因此模板内容只从源码表达式、说明和变量名产生，env 诊断抑制可能携带实际值的加载错误详情。
 - Compose 按文件先插值后合并。最终模型中消失但仍在合并前引用的变量单列加载阶段输入，原表达式和必填约束保留；不会因为 overlay 覆盖字段就漏掉加载要求。
 - `@env` 按变量名关联，文件图内的说明不会随字段覆盖而删除；不建立注释到最终字段的来源追踪。
@@ -263,7 +259,7 @@ retries = 2
 
 - 性能：全仓 `check` 与 `env check` 在 40 个 stack 规模下应在数秒内完成，不随插值表达式数量线性调用外部进程。
 - 确定性：相同输入产生字节一致的输出，所有集合按固定规则排序。
-- 安全：生成时只写目标 stack 的覆盖模板；env 生成和诊断不输出 CI、接线或隐式 include `.env` 的实际值；registry 访问只发生在 `images digests`。`render` 是配置视图输出，普通与未插值视图均可能携带环境解析值，不能把它当作凭据脱敏输出。
+- 安全：生成时只写目标 stack 的覆盖模板；示例值只是占位，env 生成和诊断不输出接线或隐式 include `.env` 的实际值；registry 访问只发生在 `images digests`。`render` 是配置视图输出，普通与未插值视图均可能携带环境解析值，不能把它当作凭据脱敏输出。
 - 测试：规则与生成逻辑以表驱动测试和 fixture 仓库覆盖；registry 通过注入 fake 测试，不访问真实网络；不弱化断言。
 
 ## 迁移计划
@@ -328,3 +324,14 @@ retries = 2
 
 - 渲染语义以内嵌 compose-go 为准，分析、CI 与部署主机均不需要 Docker CLI。定稿依据为 stacks 仓库 38 个 stack 的实测（compose-go 2.16.1 vs Docker Compose v5.6.0）：渲染语义零分歧，差异全部在输出形态层（profile 裁剪、`$$` 重转义、顶层 `x-` 键保留、profile 资源连带裁剪），且 Docker CLI 自身输出形态随版本漂移（v5.6.0 `config --no-normalize` 对含 `$$` 的 healthcheck 误报错误）。
 - compose-go 升级的行为回归由 `internal/loader` 的 golden 测试拦下：规范化模型与未插值模型逐字节钉死，覆盖插值默认值、必填表达式、嵌套与转义、有序 overlay 合并、profile、healthcheck、YAML 锚点/merge key、递归 include、`project_directory` 路径解析及显式 include `env_file` 与项目输入的优先级。升级变红后显式审查，以 `go test ./internal/loader -update` 接受新行为。
+
+## 已定稿决策（示例值并入模板，废除 CI 占位文件）
+
+取代配置中的 `render.env_files`、`[[module]].ci_env_file`、`[[env.variant]].ci_env_files`，以及 M2/M3 中涉及 CI 占位文件的条目；同时定稿模板可读性（issue #9）的格式方案。背景约束：默认值唯一来源是 compose.yaml，生产 `.env` 不随模板同步，因此必填条目必须保持空赋值以保住 `:?` 的 fail-fast，示例值只以标记注释存在，不成为活赋值。
+
+- 渲染输入收敛为组合自己的覆盖模板：生成模板以 `## Required; Example: <值>` 标记承载示例值，stacklint 解析自建标记读回（与 `@env` 同一先例，往返由漂移检查钉死）；豁免模板（手写或上游同步）以 compose-go dotenv 原生加载其活赋值。两通道平铺，标记优先。
+- 模板视觉层级：`##` 承载全部元信息（生成头、说明、Expression at、表达式原文、前导段落、状态行），单 `#` 只表示“取消注释即生效”的赋值入口，裸行只是必填空赋值。
+- 状态行格式：`:?` → `## Required; Example: <值>`；`?` → `## Required; may be empty`。Example 值含空格或特殊字符时用 dotenv 引号编码，复用赋值的往返校验。
+- 示例值声明在 compose.yaml 注释中（`# @env-example VAR: 值`），与 `@env` 家族同一扫描通道：值与需要它的表达式同住一文件，模块变量的示例值在模块 compose.yaml 声明一次即服务全部 include 它的 stack。生成恢复为源 Compose 的纯函数，模板不持有策展状态。`:?` 变量缺示例值时 `env generate` 准备阶段报告完整缺失清单；同一组合文件图内重复声明须一致；挂在有默认值或 wiring 提供的变量上失败；表达式删除后残留标记按过期处理报错。
+- 模块占位变量的跨文件归属规则消解：示例值声明在模块 compose.yaml 里，随模板条目按 `env_group` 前缀分组落入各 stack 的模板。M3 记录的 alloy-agent postgres 变体问题随之关闭，不再需要登记 `ci_env_files`。
+- 接线外部依赖的 dotenv 求值借用示例值；示例值不算运行默认值，不证明部署已提供该变量。
