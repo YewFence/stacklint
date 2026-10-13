@@ -18,6 +18,7 @@ export default defineConfig({
         text: 'Guide',
         items: [
           { text: 'Getting Started', link: '/guide/getting-started' },
+          { text: 'Env Markers', link: '/guide/env-markers' },
           { text: 'Shell Completion', link: '/guide/completion' }
         ]
       },

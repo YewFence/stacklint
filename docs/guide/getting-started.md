@@ -49,3 +49,7 @@ stacklint render stacks/edge/app --format json
 ```
 
 Exit codes: `0` everything passed (warnings allowed), `1` check failures, `2` usage or configuration errors. Only `images digests` accesses the network.
+
+## What goes in a Compose file
+
+Variables in `compose.yaml` are documented and constrained by `@env-*` comment markers — `@env` (description), `@env-preamble` (group lead-in), `@env-source` (external provider), and `@env-example` (example value for checks). These markers are the only place stacklint learns variable intent; they live next to the expression they describe. See [Env Markers](/guide/env-markers) for the full concept guide.
