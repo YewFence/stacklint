@@ -14,12 +14,13 @@ import (
 
 // Config is the repository policy loaded from stacklint.toml.
 type Config struct {
-	Repository  RepositoryConfig  `toml:"repository"`
-	Modules     []ModuleConfig    `toml:"module"`
-	Ports       PortsConfig       `toml:"ports"`
-	BindAddress BindAddressConfig `toml:"bind_address"`
-	Env         EnvConfig         `toml:"env"`
-	Images      ImagesConfig      `toml:"images"`
+	Repository        RepositoryConfig        `toml:"repository"`
+	Modules           []ModuleConfig          `toml:"module"`
+	Ports             PortsConfig             `toml:"ports"`
+	BindAddress       BindAddressConfig       `toml:"bind_address"`
+	ResourceOwnership ResourceOwnershipConfig `toml:"resource_ownership"`
+	Env               EnvConfig               `toml:"env"`
+	Images            ImagesConfig            `toml:"images"`
 }
 
 type RepositoryConfig struct {
@@ -49,6 +50,23 @@ type PortsConfig struct {
 
 type BindAddressConfig struct {
 	DefaultVariable string `toml:"default_variable"`
+}
+
+type ResourceOwnershipConfig struct {
+	Mode string `toml:"mode"`
+}
+
+const (
+	ResourceOwnershipHostOwn  = "host-own"
+	ResourceOwnershipStackOwn = "stack-own"
+	ResourceOwnershipEither   = "either"
+)
+
+func (c ResourceOwnershipConfig) ModeOrDefault() string {
+	if c.Mode != "" {
+		return c.Mode
+	}
+	return ResourceOwnershipHostOwn
 }
 
 type EnvConfig struct {
@@ -150,6 +168,9 @@ func Load(configDir string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
+	if mode := c.ResourceOwnership.ModeOrDefault(); mode != ResourceOwnershipHostOwn && mode != ResourceOwnershipStackOwn && mode != ResourceOwnershipEither {
+		return fmt.Errorf("resource_ownership.mode: %q must be %q, %q, or %q", mode, ResourceOwnershipHostOwn, ResourceOwnershipStackOwn, ResourceOwnershipEither)
+	}
 	if err := requireNoDuplicates("repository.deployment_roots", c.Repository.DeploymentRoots); err != nil {
 		return err
 	}

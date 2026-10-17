@@ -1,7 +1,7 @@
 // Package check renders stack combinations and evaluates the repository rules
 // against them: structure, image pinning, env_file passthrough, module wiring,
 // module required environment, host bind addresses, published port uniqueness,
-// volume naming, and stale approval detection.
+// volume naming and ownership, network ownership, and stale approval detection.
 package check
 
 import (
@@ -220,8 +220,16 @@ func Run(ctx context.Context, cfg *config.Config, repoRoot string, approvals *co
 		}
 	}
 	report.Diagnostics = append(report.Diagnostics, checkPublishedPorts(cfg, approvals, combos, reviewed)...)
+	report.Diagnostics = append(report.Diagnostics, checkResourceOwnership(combos)...)
 	report.Diagnostics = append(report.Diagnostics, checkStaleApprovals(cfg, approvals, combos, reviewed)...)
 	sortDiagnostics(report.Diagnostics)
+	for i := range report.Results {
+		for _, diagnostic := range report.Diagnostics {
+			if diagnostic.Stack == report.Results[i].Stack && diagnostic.Variant == report.Results[i].Variant {
+				report.Results[i].Status = "error"
+			}
+		}
+	}
 	if len(report.Diagnostics) > 0 {
 		report.ExitCode = 1
 	}

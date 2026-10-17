@@ -305,6 +305,72 @@ func TestCheckVolumeNaming(t *testing.T) {
 	}
 }
 
+func TestCheckResourceOwnership(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml())
+	f.write("stacks/edge/owner/compose.yaml", "name: owner\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\n    networks: [shared]\nvolumes:\n  shared:\n    name: shared-volume\n    external: true\nnetworks:\n  shared:\n    name: shared-network\n    external: true\n")
+	f.write("stacks/app/consumer/compose.yaml", "name: consumer\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\n    networks: [shared]\nvolumes:\n  shared:\n    name: shared-volume\n    external: true\nnetworks:\n  shared:\n    name: shared-network\n    external: true\n")
+	report := f.run(t)
+	if report.ExitCode != 0 {
+		t.Fatalf("expected host-owned resources to pass by default, got %v", rules(report))
+	}
+
+	f.write("stacks/edge/owner/compose.yaml", "name: owner\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\n    networks: [shared]\nvolumes:\n  shared:\n    name: shared-volume\nnetworks:\n  shared:\n    name: shared-network\n")
+	report = f.run(t)
+	if !hasDiagnostic(report, "resource_owner", "shared-volume") {
+		t.Fatalf("expected host-own volume diagnostic, got %v", rules(report))
+	}
+	if !hasDiagnostic(report, "resource_owner", "shared-network") {
+		t.Fatalf("expected host-own network diagnostic, got %v", rules(report))
+	}
+
+	f.write("stacks/app/consumer/compose.yaml", "name: consumer\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\n    networks: [shared]\nvolumes:\n  shared:\n    name: shared-volume\nnetworks:\n  shared:\n    name: shared-network\n")
+	report = f.run(t)
+	if !hasDiagnostic(report, "resource_owner", "shared-volume") {
+		t.Fatalf("expected duplicate volume owner diagnostic, got %v", rules(report))
+	}
+	if !hasDiagnostic(report, "resource_owner", "shared-network") {
+		t.Fatalf("expected duplicate network owner diagnostic, got %v", rules(report))
+	}
+}
+
+func TestCheckResourceOwnershipModes(t *testing.T) {
+	for _, mode := range []string{"stack-own", "either"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFixture(t)
+			f.write("stacklint.toml", f.configToml()+"\n[resource_ownership]\nmode = \""+mode+"\"\n")
+			f.write("stacks/edge/a/compose.yaml", "name: a\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n")
+			f.write("stacks/app/b/compose.yaml", "name: b\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n    external: true\n")
+			if report := f.run(t); report.ExitCode != 0 {
+				t.Fatalf("expected one owner to pass in %s mode, got %v", mode, rules(report))
+			}
+			f.write("stacks/app/b/compose.yaml", "name: b\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n")
+			if report := f.run(t); !hasDiagnostic(report, "resource_owner", "shared-volume") {
+				t.Fatalf("expected multiple owners to fail in %s mode, got %v", mode, rules(report))
+			}
+			if mode == "either" {
+				f.write("stacks/edge/a/compose.yaml", "name: a\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n    external: true\n")
+				f.write("stacks/app/b/compose.yaml", "name: b\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n    external: true\n")
+				if report := f.run(t); report.ExitCode != 0 {
+					t.Fatalf("expected all external declarations to pass in either mode, got %v", rules(report))
+				}
+			}
+		})
+	}
+}
+
+func TestCheckResourceOwnershipRequiresOwner(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml()+"\n[resource_ownership]\nmode = \"stack-own\"\n")
+	for _, stack := range []string{"stacks/edge/a", "stacks/app/b"} {
+		f.write(stack+"/compose.yaml", "name: app\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n    external: true\n")
+	}
+	report := f.run(t)
+	if !hasDiagnostic(report, "resource_owner", "shared-volume") {
+		t.Fatalf("expected stack-own mode to require an owner, got %v", rules(report))
+	}
+}
+
 func TestCheckVariantCoverage(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml()+`

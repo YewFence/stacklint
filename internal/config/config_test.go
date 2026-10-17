@@ -79,6 +79,23 @@ deployment_roots = ["stacks"]
 	if cfg.BindAddress.DefaultVariable != "" {
 		t.Errorf("empty bind_address should leave default_variable empty")
 	}
+	if got := cfg.ResourceOwnership.ModeOrDefault(); got != ResourceOwnershipHostOwn {
+		t.Errorf("default resource ownership mode: got %q", got)
+	}
+}
+
+func TestLoadRejectsInvalidResourceOwnershipMode(t *testing.T) {
+	dir := writeConfig(t, `
+[repository]
+deployment_roots = ["stacks"]
+
+[resource_ownership]
+mode = "unknown"
+`)
+	_, err := Load(dir)
+	if !errors.Is(err, ErrValidate) {
+		t.Fatalf("invalid resource ownership mode should fail validation, got %v", err)
+	}
 }
 
 func TestLoadRejectsUnknownKey(t *testing.T) {
