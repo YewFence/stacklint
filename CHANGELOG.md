@@ -1,3 +1,8 @@
+## What's Changed in 0.5.1
+* respect shared resource groups by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.5.0...v0.5.1
+
 ## What's Changed in 0.5.0
 * ci(deps): update github actions to v5.2.0 by @renovate[bot] in [#15](https://github.com/YewFence/stacklint/pull/15)
 * chore(mise-deps): update mise tools by @renovate[bot] in [#18](https://github.com/YewFence/stacklint/pull/18)
