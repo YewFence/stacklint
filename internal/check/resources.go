@@ -17,6 +17,9 @@ type resourceIdentity struct {
 }
 
 func checkResourceOwnership(combinations []*ruleContext) []Diagnostic {
+	if len(combinations) == 0 {
+		return nil
+	}
 	resources := map[resourceIdentity]map[string][]resourceDeclaration{}
 	for _, combination := range combinations {
 		for key, volume := range combination.render.Project.Volumes {
@@ -38,42 +41,51 @@ func checkResourceOwnership(combinations []*ruleContext) []Diagnostic {
 	}
 
 	var diagnostics []Diagnostic
-	for identity, stacks := range resources {
-		if len(stacks) < 2 {
-			continue
-		}
-		owners := 0
-		for _, declarations := range stacks {
-			if hasOwner(declarations) {
-				owners++
+	mode := combinations[0].cfg.ResourceOwnership.ModeOrDefault()
+	for _, groupRoot := range combinations[0].cfg.PortGroupRoots() {
+		groupName := combinations[0].cfg.PortGroupName(groupRoot)
+		for identity, declarationsByStack := range resources {
+			stacks := map[string][]resourceDeclaration{}
+			for stack, declarations := range declarationsByStack {
+				if stackInGroup(combinations[0].cfg, stack, groupRoot) {
+					stacks[stack] = declarations
+				}
 			}
-		}
-		mode := combinations[0].cfg.ResourceOwnership.ModeOrDefault()
-		valid := mode == config.ResourceOwnershipEither && owners <= 1 ||
-			mode == config.ResourceOwnershipHostOwn && owners == 0 ||
-			mode == config.ResourceOwnershipStackOwn && owners == 1
-		if valid {
-			continue
-		}
-		for _, declarations := range stacks {
-			for _, declaration := range declarations {
-				if mode == config.ResourceOwnershipHostOwn && declaration.external {
-					continue
+			if len(stacks) < 2 {
+				continue
+			}
+			owners := 0
+			for _, declarations := range stacks {
+				if hasOwner(declarations) {
+					owners++
 				}
-				if mode != config.ResourceOwnershipHostOwn && owners > 0 && declaration.external {
-					continue
+			}
+			valid := mode == config.ResourceOwnershipEither && owners <= 1 ||
+				mode == config.ResourceOwnershipHostOwn && owners == 0 ||
+				mode == config.ResourceOwnershipStackOwn && owners == 1
+			if valid {
+				continue
+			}
+			for _, declarations := range stacks {
+				for _, declaration := range declarations {
+					if mode == config.ResourceOwnershipHostOwn && declaration.external {
+						continue
+					}
+					if mode != config.ResourceOwnershipHostOwn && owners > 0 && declaration.external {
+						continue
+					}
+					message := resourceOwnershipMessage(identity, mode, groupName)
+					diagnostics = append(diagnostics, declaration.context.diagnose("resource_owner", "", message,
+						resourceOwnershipHint(mode)))
 				}
-				message := resourceOwnershipMessage(identity, mode)
-				diagnostics = append(diagnostics, declaration.context.diagnose("resource_owner", "", message,
-					resourceOwnershipHint(mode)))
 			}
 		}
 	}
 	return diagnostics
 }
 
-func resourceOwnershipMessage(identity resourceIdentity, mode string) string {
-	message := fmt.Sprintf("%s %q is declared by multiple stacks", identity.kind, identity.name)
+func resourceOwnershipMessage(identity resourceIdentity, mode, group string) string {
+	message := fmt.Sprintf("%s %q is declared by multiple stacks in group %s", identity.kind, identity.name, group)
 	switch mode {
 	case config.ResourceOwnershipHostOwn:
 		return message + "; every declaration must set external: true"

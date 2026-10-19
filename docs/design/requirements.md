@@ -158,7 +158,7 @@ retries = 2
 - 宿主机绑定变量：从未插值视图读取端口的宿主机 IP 插值变量（短语法前缀或长语法 `host_ip`），只能是 `bind_address.default_variable`；其他变量需要 `[[bind_address]]` 批准，变量集合必须完全一致。变量提取使用插值分析能力，不用正则。
 - 发布端口唯一：每个分组内同一端口和协议只能发布一次，端口范围展开计算。重复需要 `[[published_port]]` 批准，binding 集合（Compose 文件、服务、宿主机 IP）必须完全一致。
 - 卷命名：顶层卷渲染后必须是对象且有非空 `name`，并且 `name` 必须在源文件中显式写出（基于源文件关系判断，不依赖 Compose 自动生成的名字）。
-- 资源所有权：所有被扫描 stack 的顶层 volume/network 按渲染后的实际 `name`（缺省时按资源键）比较。同一资源跨 stack 重复声明时，`resource_ownership.mode` 默认为 `host-own`，要求全部声明 `external: true`；`stack-own` 要求恰有一个 stack 非 external；`either` 允许两种模式。三种模式均禁止多个 stack-own。同一 stack 的互斥变体不重复计为多个 owner。
+- 资源所有权：所有被扫描 stack 的顶层 volume/network 按渲染后的实际 `name`（缺省时按资源键）比较，并遵循 `ports.shared_roots` 分组：所有 shared roots 加入每个非共享 root 的独立组，组间不比较。同一资源在组内跨 stack 重复声明时，`resource_ownership.mode` 默认为 `host-own`，要求全部声明 `external: true`；`stack-own` 要求恰有一个 stack 非 external；`either` 允许两种模式。三种模式均禁止多个 stack-own。同一 stack 的互斥变体不重复计为多个 owner。
 - 过期批准：批准目标不存在、规则恢复默认合规或批准内容与现状不符时报错。局部检查只在批准引用的全部 Compose 文件都在本次范围内时判断过期。
 
 ### `stacklint env generate [targets...]` / `stacklint env check [targets...]`

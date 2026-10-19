@@ -334,6 +334,28 @@ func TestCheckResourceOwnership(t *testing.T) {
 	}
 }
 
+func TestCheckResourceOwnershipRespectsPortGroups(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", `[repository]
+deployment_roots = ["stacks/edge", "stacks/app", "stacks/service"]
+compose_filenames = ["compose.yaml"]
+
+[ports]
+shared_roots = ["stacks/edge"]
+
+[resource_ownership]
+mode = "stack-own"
+`)
+	f.write("stacks/edge/shared/compose.yaml", "name: shared\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [data:/data]\n    networks: [backend]\nvolumes:\n  data:\n    name: shared-data\n    external: true\nnetworks:\n  backend:\n    name: shared-backend\n    external: true\n")
+	for _, stack := range []string{"stacks/app/a", "stacks/service/b"} {
+		f.write(stack+"/compose.yaml", "name: app\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [data:/data]\n    networks: [backend]\nvolumes:\n  data:\n    name: shared-data\nnetworks:\n  backend:\n    name: shared-backend\n")
+	}
+	report := f.run(t)
+	if report.ExitCode != 0 {
+		t.Fatalf("expected each non-shared root to own the resource in its own group, got %v", rules(report))
+	}
+}
+
 func TestCheckResourceOwnershipModes(t *testing.T) {
 	for _, mode := range []string{"stack-own", "either"} {
 		t.Run(mode, func(t *testing.T) {
