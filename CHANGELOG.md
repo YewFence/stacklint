@@ -1,3 +1,8 @@
+## What's Changed in 0.6.0
+* split volume and network ownership modes by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.5.1...v0.6.0
+
 ## What's Changed in 0.5.1
 * respect shared resource groups by @YewFence
 
