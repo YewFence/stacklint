@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -79,22 +80,57 @@ deployment_roots = ["stacks"]
 	if cfg.BindAddress.DefaultVariable != "" {
 		t.Errorf("empty bind_address should leave default_variable empty")
 	}
-	if got := cfg.ResourceOwnership.ModeOrDefault(); got != ResourceOwnershipHostOwn {
-		t.Errorf("default resource ownership mode: got %q", got)
+	if got := cfg.ResourceOwnership.VolumesModeOrDefault(); got != ResourceOwnershipHostOwn {
+		t.Errorf("default volume ownership mode: got %q", got)
+	}
+	if got := cfg.ResourceOwnership.NetworksModeOrDefault(); got != ResourceOwnershipHostOwn {
+		t.Errorf("default network ownership mode: got %q", got)
+	}
+}
+
+func TestLoadResourceOwnershipModes(t *testing.T) {
+	for _, field := range []string{"volumes_mode", "networks_mode"} {
+		for _, mode := range []string{ResourceOwnershipHostOwn, ResourceOwnershipStackOwn, ResourceOwnershipEither} {
+			t.Run(field+"/"+mode, func(t *testing.T) {
+				dir := writeConfig(t, "[resource_ownership]\n"+field+" = \""+mode+"\"\n")
+				cfg, err := Load(dir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantVolumes, wantNetworks := ResourceOwnershipHostOwn, ResourceOwnershipHostOwn
+				if field == "volumes_mode" {
+					wantVolumes = mode
+				} else {
+					wantNetworks = mode
+				}
+				if got := cfg.ResourceOwnership.VolumesModeOrDefault(); got != wantVolumes {
+					t.Errorf("volume mode: got %q, want %q", got, wantVolumes)
+				}
+				if got := cfg.ResourceOwnership.NetworksModeOrDefault(); got != wantNetworks {
+					t.Errorf("network mode: got %q, want %q", got, wantNetworks)
+				}
+			})
+		}
 	}
 }
 
 func TestLoadRejectsInvalidResourceOwnershipMode(t *testing.T) {
-	dir := writeConfig(t, `
-[repository]
-deployment_roots = ["stacks"]
+	for _, field := range []string{"volumes_mode", "networks_mode"} {
+		t.Run(field, func(t *testing.T) {
+			dir := writeConfig(t, "[resource_ownership]\n"+field+" = \"unknown\"\n")
+			_, err := Load(dir)
+			if !errors.Is(err, ErrValidate) || !strings.Contains(err.Error(), "resource_ownership."+field) {
+				t.Fatalf("invalid mode should identify the rejected field, got %v", err)
+			}
+		})
+	}
+}
 
-[resource_ownership]
-mode = "unknown"
-`)
+func TestLoadRejectsResourceOwnershipModeKey(t *testing.T) {
+	dir := writeConfig(t, "[resource_ownership]\nmode = \"host-own\"\n")
 	_, err := Load(dir)
-	if !errors.Is(err, ErrValidate) {
-		t.Fatalf("invalid resource ownership mode should fail validation, got %v", err)
+	if !errors.Is(err, ErrValidate) || !strings.Contains(err.Error(), "unknown keys: [resource_ownership.mode]") {
+		t.Fatalf("mode must be rejected as an unknown key, got %v", err)
 	}
 }
 

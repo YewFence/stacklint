@@ -344,7 +344,8 @@ compose_filenames = ["compose.yaml"]
 shared_roots = ["stacks/edge"]
 
 [resource_ownership]
-mode = "stack-own"
+volumes_mode = "stack-own"
+networks_mode = "stack-own"
 `)
 	f.write("stacks/edge/shared/compose.yaml", "name: shared\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [data:/data]\n    networks: [backend]\nvolumes:\n  data:\n    name: shared-data\n    external: true\nnetworks:\n  backend:\n    name: shared-backend\n    external: true\n")
 	for _, stack := range []string{"stacks/app/a", "stacks/service/b"} {
@@ -360,7 +361,7 @@ func TestCheckResourceOwnershipModes(t *testing.T) {
 	for _, mode := range []string{"stack-own", "either"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newFixture(t)
-			f.write("stacklint.toml", f.configToml()+"\n[resource_ownership]\nmode = \""+mode+"\"\n")
+			f.write("stacklint.toml", f.configToml()+"\n[resource_ownership]\nvolumes_mode = \""+mode+"\"\n")
 			f.write("stacks/edge/a/compose.yaml", "name: a\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n")
 			f.write("stacks/app/b/compose.yaml", "name: b\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n    external: true\n")
 			if report := f.run(t); report.ExitCode != 0 {
@@ -383,7 +384,7 @@ func TestCheckResourceOwnershipModes(t *testing.T) {
 
 func TestCheckResourceOwnershipRequiresOwner(t *testing.T) {
 	f := newFixture(t)
-	f.write("stacklint.toml", f.configToml()+"\n[resource_ownership]\nmode = \"stack-own\"\n")
+	f.write("stacklint.toml", f.configToml()+"\n[resource_ownership]\nvolumes_mode = \"stack-own\"\n")
 	for _, stack := range []string{"stacks/edge/a", "stacks/app/b"} {
 		f.write(stack+"/compose.yaml", "name: app\nservices:\n  app:\n    image: "+pinnedImage+"\n    volumes: [shared:/data]\nvolumes:\n  shared:\n    name: shared-volume\n    external: true\n")
 	}

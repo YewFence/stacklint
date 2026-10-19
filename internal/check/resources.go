@@ -41,10 +41,13 @@ func checkResourceOwnership(combinations []*ruleContext) []Diagnostic {
 	}
 
 	var diagnostics []Diagnostic
-	mode := combinations[0].cfg.ResourceOwnership.ModeOrDefault()
 	for _, groupRoot := range combinations[0].cfg.PortGroupRoots() {
 		groupName := combinations[0].cfg.PortGroupName(groupRoot)
 		for identity, declarationsByStack := range resources {
+			mode := combinations[0].cfg.ResourceOwnership.VolumesModeOrDefault()
+			if identity.kind == "network" {
+				mode = combinations[0].cfg.ResourceOwnership.NetworksModeOrDefault()
+			}
 			stacks := map[string][]resourceDeclaration{}
 			for stack, declarations := range declarationsByStack {
 				if stackInGroup(combinations[0].cfg, stack, groupRoot) {

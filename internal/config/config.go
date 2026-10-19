@@ -53,7 +53,8 @@ type BindAddressConfig struct {
 }
 
 type ResourceOwnershipConfig struct {
-	Mode string `toml:"mode"`
+	VolumesMode  string `toml:"volumes_mode"`
+	NetworksMode string `toml:"networks_mode"`
 }
 
 const (
@@ -62,9 +63,18 @@ const (
 	ResourceOwnershipEither   = "either"
 )
 
-func (c ResourceOwnershipConfig) ModeOrDefault() string {
-	if c.Mode != "" {
-		return c.Mode
+// VolumesModeOrDefault returns the ownership policy for duplicate volumes.
+func (c ResourceOwnershipConfig) VolumesModeOrDefault() string {
+	if c.VolumesMode != "" {
+		return c.VolumesMode
+	}
+	return ResourceOwnershipHostOwn
+}
+
+// NetworksModeOrDefault returns the ownership policy for duplicate networks.
+func (c ResourceOwnershipConfig) NetworksModeOrDefault() string {
+	if c.NetworksMode != "" {
+		return c.NetworksMode
 	}
 	return ResourceOwnershipHostOwn
 }
@@ -168,8 +178,16 @@ func Load(configDir string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	if mode := c.ResourceOwnership.ModeOrDefault(); mode != ResourceOwnershipHostOwn && mode != ResourceOwnershipStackOwn && mode != ResourceOwnershipEither {
-		return fmt.Errorf("resource_ownership.mode: %q must be %q, %q, or %q", mode, ResourceOwnershipHostOwn, ResourceOwnershipStackOwn, ResourceOwnershipEither)
+	for _, setting := range []struct {
+		name string
+		mode string
+	}{
+		{"volumes_mode", c.ResourceOwnership.VolumesModeOrDefault()},
+		{"networks_mode", c.ResourceOwnership.NetworksModeOrDefault()},
+	} {
+		if setting.mode != ResourceOwnershipHostOwn && setting.mode != ResourceOwnershipStackOwn && setting.mode != ResourceOwnershipEither {
+			return fmt.Errorf("resource_ownership.%s: %q must be %q, %q, or %q", setting.name, setting.mode, ResourceOwnershipHostOwn, ResourceOwnershipStackOwn, ResourceOwnershipEither)
+		}
 	}
 	if err := requireNoDuplicates("repository.deployment_roots", c.Repository.DeploymentRoots); err != nil {
 		return err
