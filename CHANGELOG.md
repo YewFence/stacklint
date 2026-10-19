@@ -1,3 +1,12 @@
+## What's Changed in 0.5.0
+* ci(deps): update github actions to v5.2.0 by @renovate[bot] in [#15](https://github.com/YewFence/stacklint/pull/15)
+* chore(mise-deps): update mise tools by @renovate[bot] in [#18](https://github.com/YewFence/stacklint/pull/18)
+* chore(gomod-deps): update go modules by @renovate[bot] in [#14](https://github.com/YewFence/stacklint/pull/14)
+* enforce configurable resource ownership by @YewFence
+* add Env Markers concept guide by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.4.1...v0.5.0
+
 ## What's Changed in 0.4.1
 * allow @env-example on @env-source annotated inputs by @YewFence
 
