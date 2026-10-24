@@ -172,6 +172,7 @@ var combinationRules = []struct {
 	{"module_environment", checkModuleEnvironment},
 	{"bind_address", checkBindAddress},
 	{"volume_name", checkVolumeNames},
+	{"fixed_env", checkFixedEnv},
 }
 
 // Run renders every selected stack's combinations and evaluates all rules.
@@ -197,11 +198,12 @@ func Run(ctx context.Context, cfg *config.Config, repoRoot string, approvals *co
 					Message:  fmt.Sprintf("could not render combination: %v", err),
 					Hint:     "Fix the Compose files or static render inputs, then re-run stacklint check.",
 				})
-				// The wiring rule reads source files only and produces the
-				// actionable diagnostic when a missing wiring file is what broke
-				// the render, so it still runs.
+				// The wiring and fixed-env rules read source files only and produce
+				// the actionable diagnostic when a missing wiring file or a dead
+				// fixed entry is what broke the render, so they still run.
 				rc := &ruleContext{cfg: cfg, repoRoot: repoRoot, approvals: approvals, combo: combo, allCombos: stackCombos, reviewed: reviewed}
 				report.Diagnostics = append(report.Diagnostics, checkWiring(rc)...)
+				report.Diagnostics = append(report.Diagnostics, checkFixedEnv(rc)...)
 				continue
 			}
 			rc := &ruleContext{cfg: cfg, repoRoot: repoRoot, approvals: approvals, combo: combo, allCombos: stackCombos, render: render, reviewed: reviewed}

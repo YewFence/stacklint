@@ -552,6 +552,70 @@ func TestCheckModuleRequiredEnvironment(t *testing.T) {
 	}
 }
 
+func TestCheckFixedEnvFiles(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml()+moduleToml+"\n[env]\nfixed_files = ['.env.conf']\n")
+	f.writeModule()
+	f.write("stacks/app/web/compose.yaml", "name: web\ninclude:\n  - path: ../../compose/litestream/compose.yaml\n    env_file: .env.litestream\nservices:\n  web:\n    image: "+pinnedImage+"\n    environment:\n      APP_URL: https://${APP_DOMAIN}\n      BIND: ${BIND_ADDRESS}\n      APP_TOKEN: ${APP_TOKEN:?${ERROR_MSG:-token missing}} # @env-example APP_TOKEN: dummy-token\n")
+	f.write("stacks/app/web/.env.litestream", "LITESTREAM_DB=/data/${REPLICA_HOST}.db\n")
+	// APP_DOMAIN is referenced in Compose, BIND_ADDRESS is the built-in provider,
+	// LITESTREAM_DB is wiring-declared, REPLICA_HOST is a wiring value
+	// dependency, ERROR_MSG only inside a required-error branch (interp still
+	// counts it as queried); MIRROR_DOMAIN is only referenced by a variant
+	// overlay and starts as a dead entry.
+	f.write("stacks/app/web/.env.conf", "APP_DOMAIN=example.com\nBIND_ADDRESS=0.0.0.0\nLITESTREAM_DB=ignored-value\nREPLICA_HOST=replica.internal\nERROR_MSG=token is required\nMIRROR_DOMAIN=mirror.example.com\n")
+	report := f.run(t)
+	if !hasDiagnostic(report, "fixed_env", "MIRROR_DOMAIN") {
+		t.Fatalf("expected dead entry diagnostic, got %v", rules(report))
+	}
+	for _, name := range []string{"APP_DOMAIN", "BIND_ADDRESS", "LITESTREAM_DB", "REPLICA_HOST", "ERROR_MSG"} {
+		if hasDiagnostic(report, "fixed_env", name) {
+			t.Fatalf("%s must not be flagged: %v", name, rules(report))
+		}
+	}
+
+	// A key referenced only by a variant overlay counts: union across combinations.
+	f.write("stacklint.toml", f.configToml()+moduleToml+"\n[env]\nfixed_files = ['.env.conf']\n\n[[env.variant]]\nstack = 'stacks/app/web'\nname = 'mirror'\nfiles = ['stacks/app/web/compose.yaml', 'stacks/app/web/compose.mirror.yaml']\noutput = '.env.mirror.example'\n")
+	f.write("stacks/app/web/compose.mirror.yaml", "services:\n  web:\n    environment:\n      MIRROR_URL: https://${MIRROR_DOMAIN}/repo\n")
+	f.write("stacks/app/web/.env.conf", "APP_DOMAIN=example.com\nBIND_ADDRESS=0.0.0.0\nLITESTREAM_DB=ignored-value\nREPLICA_HOST=replica.internal\nERROR_MSG=token is required\nMIRROR_DOMAIN=mirror.example.com\n")
+	report = f.run(t)
+	if report.ExitCode != 0 {
+		t.Fatalf("expected clean report with variant union, got %v", rules(report))
+	}
+}
+
+func TestCheckFixedEnvFilesUnparsable(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml()+"\n[env]\nfixed_files = ['.env.conf']\n")
+	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: "+pinnedImage+"\n")
+	f.write("stacks/app/web/.env.conf", "GOOD=1\nthis is not dotenv syntax\n")
+	report := f.run(t)
+	if !hasDiagnostic(report, "fixed_env", "could not parse") {
+		t.Fatalf("expected parse failure diagnostic, got %v", rules(report))
+	}
+}
+
+func TestCheckFixedEnvFilesMissingFileSkipped(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml()+"\n[env]\nfixed_files = ['.env.conf']\n")
+	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: "+pinnedImage+"\n")
+	report := f.run(t)
+	if report.ExitCode != 0 {
+		t.Fatalf("expected clean report without .env.conf, got %v", rules(report))
+	}
+}
+
+func TestCheckFixedEnvFilesRunsAfterRenderFailure(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml()+"\n[env]\nfixed_files = ['.env.conf']\n")
+	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: ${MISSING_IMAGE:?required}\n")
+	f.write("stacks/app/web/.env.conf", "DEAD_ENTRY=1\n")
+	report := f.run(t)
+	if !hasDiagnostic(report, "fixed_env", "DEAD_ENTRY") {
+		t.Fatalf("expected dead entry diagnostic despite render failure, got %v", rules(report))
+	}
+}
+
 func TestCheckPartialScopeSkipsStaleJudgement(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml())

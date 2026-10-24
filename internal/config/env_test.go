@@ -29,10 +29,26 @@ output = ".env.local.example"
 	}
 }
 
+func TestEnvFixedFilesConfiguration(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "[env]\nfixed_files = ['.env.conf', 'conf/extra.env']\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Env.FixedFiles) != 2 || cfg.Env.FixedFiles[0] != ".env.conf" {
+		t.Fatalf("fixed files lost: %+v", cfg.Env)
+	}
+}
+
 func TestInvalidEnvConfiguration(t *testing.T) {
 	tests := []string{
 		"[env]\noutput = '../escape.env'\n",
 		"[env]\ninclude_env_files = ['../wiring.env']\n",
+		"[env]\nfixed_files = ['.env.conf', '.env.conf']\n",
+		"[env]\nfixed_files = ['../outside.env']\n",
+		"[env]\nfixed_files = ['/etc/app.env']\n",
+		"[env]\nfixed_files = ['.env']\n",
+		"[env]\nfixed_files = ['.env.secrets']\n",
+		"[env]\nfixed_files = ['conf/.env']\n",
 		"[[env.variant]]\nstack = 'stacks/app'\nname = 'base'\nfiles = ['stacks/app/compose.yaml']\noutput = '.env.local.example'\n",
 		"[[env.variant]]\nstack = 'stacks/app'\nname = 'local'\nfiles = []\noutput = '.env.local.example'\n",
 		"[[env.variant]]\nstack = '../app'\nname = 'local'\nfiles = ['stacks/app/compose.yaml']\noutput = '.env.local.example'\n",

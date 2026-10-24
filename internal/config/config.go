@@ -82,6 +82,7 @@ func (c ResourceOwnershipConfig) NetworksModeOrDefault() string {
 type EnvConfig struct {
 	Output          string       `toml:"output"`
 	IncludeEnvFiles []string     `toml:"include_env_files"`
+	FixedFiles      []string     `toml:"fixed_files"`
 	Variants        []EnvVariant `toml:"variant"`
 }
 
@@ -239,6 +240,20 @@ func (c *Config) validateEnv() error {
 	for _, path := range c.Env.IncludeEnvFiles {
 		if !filepath.IsLocal(path) {
 			return fmt.Errorf("env.include_env_files: %q must be repository-relative", path)
+		}
+	}
+	if err := requireNoDuplicates("env.fixed_files", c.Env.FixedFiles); err != nil {
+		return err
+	}
+	for _, path := range c.Env.FixedFiles {
+		if !filepath.IsLocal(path) {
+			return fmt.Errorf("env.fixed_files: %q must be a filename inside the stack", path)
+		}
+		if path == ".env" || path == ".env.secrets" {
+			return fmt.Errorf("env.fixed_files: %q must not be the deployment .env or .env.secrets", path)
+		}
+		if filepath.Base(path) == ".env" || filepath.Base(path) == ".env.secrets" {
+			return fmt.Errorf("env.fixed_files: %q must not be named .env or .env.secrets (Compose loads implicit .env files)", path)
 		}
 	}
 	names := map[string]bool{}

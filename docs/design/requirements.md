@@ -22,7 +22,7 @@ stacklint 用 Go 直接复用 compose-go、`distribution/reference` 和 regclien
 ## 非目标
 
 - 不启动容器、不连接 Docker daemon、不拉取镜像层、不创建 Docker 资源。
-- 不读进程环境参与插值，不自动加载主项目的 `.env`、`.env.secrets` 等部署文件。include 未声明 `env_file` 时允许 compose-go 原生读取模块目录的默认 `.env`，env 命令发现它会 warning 后继续；它不是批准的固定接线来源，其实际值不进入环境模板或 env 诊断。
+- 不读进程环境参与插值，不自动加载主项目的 `.env`、`.env.secrets` 等部署文件。include 未声明 `env_file` 时允许 compose-go 原生读取模块目录的默认 `.env`，env 命令发现它会 warning 后继续；它不是批准的固定接线来源，其实际值不进入环境模板或 env 诊断。`env.fixed_files` 是唯一例外：它只授权读取键集合做死条目检查，值永不进入插值环境（见 check 规则）。
 - 不替代运维主机上的运行时工具，不调用业务系统的 API。
 - 不生成 Compose 文件，不修改 Compose 行为。
 
@@ -92,6 +92,8 @@ networks_mode = "host-own"
 output = ".env.example"
 # 可选：除 module.wiring_file 外获准读取的 include 静态接线文件
 include_env_files = []
+# 可选：stack 内的固定值文件（如 .env.conf）；仅授权 check 读取键集合，不提供值
+fixed_files = [".env.conf"]
 
 [[env.variant]]
 stack = "stacks/edge/alloy-agent"
@@ -165,6 +167,7 @@ retries = 2
 - 卷命名：顶层卷渲染后必须是对象且有非空 `name`，并且 `name` 必须在源文件中显式写出（基于源文件关系判断，不依赖 Compose 自动生成的名字）。
 - 资源所有权：所有被扫描 stack 的顶层 volume/network 按渲染后的实际 `name`（缺省时按资源键）比较，并遵循 `ports.shared_roots` 分组：所有 shared roots 加入每个非共享 root 的独立组，组间不比较。卷由 `resource_ownership.volumes_mode`、网络由 `resource_ownership.networks_mode` 独立配置，各自缺省为 `host-own`。同一资源在组内跨 stack 重复声明时，`host-own` 要求全部声明 `external: true`；`stack-own` 要求恰有一个 stack 非 external，其余 stack 全部 external；`either` 允许两种模式。三种模式均禁止多个 stack-own。同一 stack 的互斥变体不重复计为多个 owner。旧 `resource_ownership.mode` 不再接受，按未知键报错。
 - 过期批准：批准目标不存在、规则恢复默认合规或批准内容与现状不符时报错。局部检查只在批准引用的全部 Compose 文件都在本次范围内时判断过期。
+- 固定值文件键集合：`env.fixed_files` 登记的 stack 内文件（例如 git 跟踪的 `.env.conf`，由部署工具合并进 `.env`）必须每个键都被该 stack 引用。引用集合是全部组合 include 图中所有 YAML 值引用的插值变量并集，减去 wiring 文件声明的键、wiring 文件值内引用的外部变量（部署时由 `.env` 填充）和 `bind_address.default_variable`；比较只用键集合，值不参与渲染。文件不存在时跳过；存在但解析失败报错。键集合与 `.env.secrets` 的不相交检查留在仓库侧脚本，不属于 stacklint。
 
 ### `stacklint env generate [targets...]` / `stacklint env check [targets...]`
 
@@ -346,3 +349,12 @@ retries = 2
 - 模块占位变量的跨文件归属规则消解：示例值声明在模块 compose.yaml 里，随模板条目按 `env_group` 前缀分组落入各 stack 的模板。M3 记录的 alloy-agent postgres 变体问题随之关闭，不再需要登记 `ci_env_files`。
 - 接线外部依赖的 dotenv 求值借用示例值；示例值不算运行默认值，不证明部署已提供该变量。
 - compose CLI 消费者（如 `docker compose config` 提取工具）读不懂注释标记，ci 文件因此保留为生成产物：`env ci` 把组合的示例值物化为 `.env.ci`（变体 `.env.ci.<name>`），值唯一来源仍是标记，消费者策略（按需生成或提交入库）不归 stacklint 管。
+
+## 已定稿决策（固定值文件死条目检查，issue #17）
+
+- 读取授权：新增 `env.fixed_files`（stack 内相对路径，缺省空即不检查），语义类似 `include_env_files` 的「已获准读取」但只提供键集合、不提供值；不得为 `.env`/`.env.secrets` 或其变体文件名，避开 compose-go 的隐式 include `.env` 加载。值永不进入插值环境，`@env-example` 仍是让 `:?` 可渲染的唯一来源。
+- 引用集合：全部组合（base 及变体）include 图内所有 YAML **值**节点引用的插值变量并集，用现有 `internal/interp` 记录型求值逐字符串标量提取（compose-go 只对值插值、不对映射键插值，语义一致）；错误分支内嵌变量（`${A:?${B}}` 的 B）按 interp 求值观察计入，避免把真实输入误报为死条目。
+- 提供方扣除：模块 wiring 文件声明的键；wiring 文件值内引用的外部变量（dotenv 求值 lookup 观察到且非自身声明——部署时由 `.env` 填充，是固定值的合法来源）；`bind_address.default_variable`。文件内自引用（`A=…${A}` 不存在）与 `$$` 转义由 compose-go 语义自然排除。
+- 诊断：逐文件报告不在引用集合内的死键，定位 stack 与文件名，提示删除条目或在 Compose 中补上引用；文件缺失跳过；存在但解析失败按默认失败报错。stack 级规则，base 组合上跑一遍，覆盖全部组合并集；渲染失败仍执行（同 wiring 规则先例，只读源文件）。
+- 与 `[[env_exemption]]` 无关：豁免覆盖模板生成，本规则检查另一个文件，不设批准通道（死条目没有正当理由，删掉或补引用二选一）。
+- 与仓库侧分工：`.env.conf` 与 `.env.secrets` 的键集合不相交检查留在 stacks 仓库脚本，stacklint 不处理。
