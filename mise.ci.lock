@@ -43,6 +43,6 @@ url = "https://github.com/orhun/git-cliff/releases/download/v2.14.2/git-cliff-2.
 url_api = "https://api.github.com/repos/orhun/git-cliff/releases/assets/573487227"
 
 [[tools."go:golang.org/x/vuln/cmd/govulncheck"]]
-version = "1.8.0"
+version = "1.9.0"
 backend = "go:golang.org/x/vuln/cmd/govulncheck"
 specifiers = ["latest"]
