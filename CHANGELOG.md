@@ -1,3 +1,12 @@
+## What's Changed in 0.7.0
+* chore(mise-deps): lock file maintenance by @renovate[bot] in [#19](https://github.com/YewFence/stacklint/pull/19)
+* chore(gomod-deps): update go modules by @renovate[bot] in [#26](https://github.com/YewFence/stacklint/pull/26)
+* chore(go-deps): update go module directive to v1.27.3 by @renovate[bot] in [#24](https://github.com/YewFence/stacklint/pull/24)
+* ci(deps): update github actions to v5.2.2 by @renovate[bot] in [#25](https://github.com/YewFence/stacklint/pull/25)
+* flag dead entries in fixed-value env files (env.fixed_files) by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.6.0...v0.7.0
+
 ## What's Changed in 0.6.0
 * split volume and network ownership modes by @YewFence
 
