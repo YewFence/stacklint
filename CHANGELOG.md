@@ -1,3 +1,10 @@
+## What's Changed in 0.7.1
+* ci(deps): update github actions to v5.2.3 by @renovate[bot] in [#29](https://github.com/YewFence/stacklint/pull/29)
+* chore(npm-deps): lock file maintenance by @renovate[bot] in [#20](https://github.com/YewFence/stacklint/pull/20)
+* fixed_env recognizes pass-through and env_file-passthrough consumption by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.7.0...v0.7.1
+
 ## What's Changed in 0.7.0
 * chore(mise-deps): lock file maintenance by @renovate[bot] in [#19](https://github.com/YewFence/stacklint/pull/19)
 * chore(gomod-deps): update go modules by @renovate[bot] in [#26](https://github.com/YewFence/stacklint/pull/26)
