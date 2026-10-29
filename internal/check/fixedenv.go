@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/YewFence/stacklint/internal/interp"
@@ -28,6 +29,14 @@ import (
 func checkFixedEnv(c *ruleContext) []Diagnostic {
 	if c.combo.Variant != "base" || len(c.cfg.Env.FixedFiles) == 0 {
 		return nil
+	}
+	// Stacks with an env-file-passthrough exemption consume their fixed env
+	// through env_file: .env rather than interpolation, so the rule does not
+	// apply to them.
+	for _, exemption := range c.approvals.Exemptions {
+		if exemption.Stack == c.combo.Stack.RelPath && exemption.Kind == "env-file-passthrough" {
+			return nil
+		}
 	}
 	var diagnostics []Diagnostic
 	for _, name := range c.cfg.Env.FixedFiles {
@@ -64,8 +73,10 @@ func checkFixedEnv(c *ruleContext) []Diagnostic {
 }
 
 // interpolationVariables returns the union of variables referenced by string
-// values anywhere in every combination's include graph. Keys of mappings are
-// not interpolated by compose-go and are ignored.
+// values anywhere in every combination's include graph, plus pass-through
+// environment keys (null-valued `KEY:` entries and `- KEY` list entries) that
+// deployment fills from the merged .env. Keys of mappings are not interpolated
+// by compose-go and are ignored.
 func interpolationVariables(c *ruleContext) (map[string]bool, error) {
 	sources, err := wiring.SourceFiles(c.allFiles(), c.combo.Stack.Dir)
 	if err != nil {
@@ -156,21 +167,67 @@ func wiringFiles(c *ruleContext) []string {
 }
 
 // collectReferenced walks a YAML document's string scalar values and records
-// the interpolation variable names they reference, evaluated through the
-// recording analyzer. Mapping keys are not interpolated by compose-go and are
-// skipped; non-string scalars never interpolate.
+// the interpolation variable names they reference, plus pass-through keys
+// from environment/build-args containers (null-valued `KEY:` entries and
+// `- KEY` list entries without `=`). Mapping keys are not interpolated by
+// compose-go and are ignored; non-string scalars never interpolate.
 func collectReferenced(node *yaml.Node, referenced map[string]bool) error {
+	return collectReferencedAt(node, nil, referenced)
+}
+
+// passthroughContainer reports whether the given path is a services.*.environment
+// or services.*.build.args mapping/sequence, matching envtemplate/scan.go.
+func passthroughContainer(path []string) bool {
+	return len(path) == 3 && (path[0] == "services" || path[0] == "jobs") && path[2] == "environment" ||
+		len(path) == 4 && path[0] == "services" && path[2] == "build" && path[3] == "args"
+}
+
+// resolvedNode follows alias nodes to their target, mirroring envtemplate's
+// resolvedNode.
+func resolvedNode(node *yaml.Node) *yaml.Node {
+	for node.Kind == yaml.AliasNode {
+		node = node.Alias
+	}
+	return node
+}
+
+func collectReferencedAt(node *yaml.Node, path []string, referenced map[string]bool) error {
 	if node == nil {
 		return nil
 	}
 	if node.Kind == yaml.AliasNode {
-		return collectReferenced(node.Alias, referenced)
+		return collectReferencedAt(node.Alias, path, referenced)
 	}
-	if node.Kind == yaml.ScalarNode {
+	switch node.Kind {
+	case yaml.DocumentNode:
+		return collectReferencedAt(node.Content[0], path, referenced)
+	case yaml.ScalarNode:
 		if node.Tag != "!!str" {
 			return nil
 		}
-		names, err := interp.Names(node.Value)
+		value := node.Value
+		// environment/build args list entries: `- KEY` or `- KEY=value`
+		// These appear as SequenceNode children of an environment/build.args mapping.
+		// We distinguish them from MappingNode values (KEY: value) by checking if
+		// the current path's last segment is a numeric index (SequenceNode child).
+		if len(path) > 0 {
+			lastSeg := path[len(path)-1]
+			if _, err := strconv.Atoi(lastSeg); err == nil && passthroughContainer(path[:len(path)-1]) {
+				if !strings.Contains(value, "=") {
+					if !strings.Contains(value, "$") {
+						referenced[value] = true
+					}
+					return nil
+				}
+				if _, expr, hasEquals := strings.Cut(value, "="); hasEquals {
+					value = expr
+				}
+			}
+		}
+		if !strings.Contains(value, "$") {
+			return nil
+		}
+		names, err := interp.Names(value)
 		if err != nil {
 			return err
 		}
@@ -178,19 +235,36 @@ func collectReferenced(node *yaml.Node, referenced map[string]bool) error {
 			referenced[name] = true
 		}
 		return nil
-	}
-	if node.Kind == yaml.MappingNode {
+	case yaml.MappingNode:
 		for i := 1; i < len(node.Content); i += 2 {
-			if err := collectReferenced(node.Content[i], referenced); err != nil {
+			key := node.Content[i-1]
+			child := node.Content[i]
+			resolved := resolvedNode(child)
+			childPath := append(path, key.Value)
+			if passthroughContainer(path) && resolved.Kind != yaml.ScalarNode {
+				return fmt.Errorf("environment/build args values must be scalars")
+			}
+			if passthroughContainer(path) && resolved.Tag == "!!null" {
+				// `KEY:` pass-through entry
+				referenced[key.Value] = true
+			}
+			if err := collectReferencedAt(child, childPath, referenced); err != nil {
 				return err
 			}
 		}
 		return nil
-	}
-	for _, child := range node.Content {
-		if err := collectReferenced(child, referenced); err != nil {
-			return err
+	case yaml.SequenceNode:
+		for i, child := range node.Content {
+			childPath := append(path, strconv.Itoa(i))
+			resolved := resolvedNode(child)
+			if passthroughContainer(path) && resolved.Kind != yaml.ScalarNode {
+				return fmt.Errorf("environment/build args list entries must be scalars")
+			}
+			if err := collectReferencedAt(child, childPath, referenced); err != nil {
+				return err
+			}
 		}
+		return nil
 	}
 	return nil
 }

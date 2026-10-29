@@ -616,6 +616,22 @@ func TestCheckFixedEnvFilesRunsAfterRenderFailure(t *testing.T) {
 	}
 }
 
+func TestCheckFixedEnvFilesSkipsEnvFilePassthroughExemption(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml()+"\n[env]\nfixed_files = ['.env.conf']\n")
+	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: "+pinnedImage+"\n")
+	f.write("stacks/app/web/.env.conf", "SMTP_HOST=smtp.example.com\n")
+	f.write("approvals.toml", `[[env_exemption]]
+stack = 'stacks/app/web'
+kind = 'env-file-passthrough'
+reason = "Application reads environment from the merged .env file."
+`)
+	report := f.run(t)
+	if report.ExitCode != 0 {
+		t.Fatalf("expected env-file-passthrough exemption to skip fixed_env, got %v", rules(report))
+	}
+}
+
 func TestCheckPartialScopeSkipsStaleJudgement(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml())
