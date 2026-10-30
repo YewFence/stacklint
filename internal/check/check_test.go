@@ -584,6 +584,61 @@ func TestCheckFixedEnvFiles(t *testing.T) {
 	}
 }
 
+func TestCheckFixedEnvFilesMergedAnchorEnvironment(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml()+"\n[env]\nfixed_files = ['.env.conf']\n")
+	f.write("stacks/app/web/compose.yaml", `name: web
+x-django-env: &django-env
+  SITE_URL: https://${HOST:-defectdojo.example.net}
+
+services:
+  web:
+    image: `+pinnedImage+`
+    environment:
+      <<: *django-env
+      OWN_KEY: ${OWN_VALUE}
+`)
+	f.write("stacks/app/web/.env.conf", "HOST=defectdojo.example.net\nOWN_VALUE=own\n")
+	report := f.run(t)
+	if report.ExitCode != 0 {
+		t.Fatalf("merge-key environment must resolve anchor references: %v", rules(report))
+	}
+
+	// A dead entry next to an anchor-referenced one is still flagged.
+	f.write("stacks/app/web/.env.conf", "HOST=defectdojo.example.net\nOWN_VALUE=own\nDEAD_ENTRY=1\n")
+	report = f.run(t)
+	if !hasDiagnostic(report, "fixed_env", "DEAD_ENTRY") {
+		t.Fatalf("expected dead entry diagnostic, got %v", rules(report))
+	}
+	for _, name := range []string{"HOST", "OWN_VALUE"} {
+		if hasDiagnostic(report, "fixed_env", name) {
+			t.Fatalf("%s must not be flagged: %v", name, rules(report))
+		}
+	}
+}
+
+func TestCheckFixedEnvFilesMergedAnchorSequence(t *testing.T) {
+	f := newFixture(t)
+	f.write("stacklint.toml", f.configToml()+"\n[env]\nfixed_files = ['.env.conf']\n")
+	f.write("stacks/app/web/compose.yaml", `name: web
+x-common: &common
+  FIRST: ${FIRST_VAR}
+x-extra: &extra
+  SECOND: ${SECOND_VAR}
+
+services:
+  web:
+    image: `+pinnedImage+`
+    environment:
+      <<: [*common, *extra]
+`)
+	f.write("stacks/app/web/.env.conf", "FIRST_VAR=one\nSECOND_VAR=two\n")
+	report := f.run(t)
+	if report.ExitCode != 0 {
+		t.Fatalf("sequence merge key must resolve anchor references: %v", rules(report))
+	}
+}
+
 func TestCheckFixedEnvFilesUnparsable(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml()+"\n[env]\nfixed_files = ['.env.conf']\n")

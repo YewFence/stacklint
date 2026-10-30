@@ -239,6 +239,21 @@ func collectReferencedAt(node *yaml.Node, path []string, referenced map[string]b
 		for i := 1; i < len(node.Content); i += 2 {
 			key := node.Content[i-1]
 			child := node.Content[i]
+			if key.Tag == "!!merge" {
+				// A merge key's value is an alias (or a sequence of aliases)
+				// whose target mapping contents belong at the current path,
+				// mirroring envtemplate's walk.
+				targets := []*yaml.Node{child}
+				if resolved := resolvedNode(child); resolved.Kind == yaml.SequenceNode {
+					targets = resolved.Content
+				}
+				for _, target := range targets {
+					if err := collectReferencedAt(resolvedNode(target), path, referenced); err != nil {
+						return err
+					}
+				}
+				continue
+			}
 			resolved := resolvedNode(child)
 			childPath := append(path, key.Value)
 			if passthroughContainer(path) && resolved.Kind != yaml.ScalarNode {
