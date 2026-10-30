@@ -1,3 +1,10 @@
+## What's Changed in 0.7.2
+* chore(mise-deps): update mise tools by @renovate[bot] in [#27](https://github.com/YewFence/stacklint/pull/27)
+* ci(deps): update github actions to v5.2.4 by @renovate[bot] in [#31](https://github.com/YewFence/stacklint/pull/31)
+* fixed_env follows YAML merge keys into anchors by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.7.1...v0.7.2
+
 ## What's Changed in 0.7.1
 * ci(deps): update github actions to v5.2.3 by @renovate[bot] in [#29](https://github.com/YewFence/stacklint/pull/29)
 * chore(npm-deps): lock file maintenance by @renovate[bot] in [#20](https://github.com/YewFence/stacklint/pull/20)
