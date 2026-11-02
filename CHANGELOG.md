@@ -1,3 +1,9 @@
+## What's Changed in 0.8.0
+* model mutually exclusive alternative stacks by @YewFence
+* consolidate approvals into stacklint.toml by @YewFence
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.7.2...v0.8.0
+
 ## What's Changed in 0.7.2
 * chore(mise-deps): update mise tools by @renovate[bot] in [#27](https://github.com/YewFence/stacklint/pull/27)
 * ci(deps): update github actions to v5.2.4 by @renovate[bot] in [#31](https://github.com/YewFence/stacklint/pull/31)
