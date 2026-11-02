@@ -54,6 +54,19 @@ func TestFindAll(t *testing.T) {
 	}
 }
 
+func TestFindAllValidatesAlternativeTargets(t *testing.T) {
+	root := repo(t, "stacks/edge/web/compose.yaml", "stacks/yewyard/web/compose.yaml")
+	cfg := testConfig()
+	cfg.Deployment.Alternatives = []config.AlternativeGroup{{Name: "web", Stacks: []string{"stacks/edge/web", "stacks/yewyard/web"}}}
+	if _, err := FindAll(cfg, root); err != nil {
+		t.Fatalf("valid alternative targets rejected: %v", err)
+	}
+	cfg.Deployment.Alternatives[0].Stacks[1] = "stacks/yewyard/missing"
+	if _, err := FindAll(cfg, root); err == nil {
+		t.Fatal("undiscovered alternative target must fail")
+	}
+}
+
 func TestFindAllMissingRootFails(t *testing.T) {
 	root := repo(t, "stacks/edge/web/compose.yaml")
 	cfg := testConfig()

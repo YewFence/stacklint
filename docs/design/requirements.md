@@ -34,6 +34,7 @@ stacklint 用 Go 直接复用 compose-go、`distribution/reference` 和 regclien
 - 部署根目录：配置中声明的、在其下发现 stack 的目录，例如 `stacks/edge`。
 - 共享模块：不可独立部署、被 stack 通过 `include` 引用的 Compose 模块。
 - 静态渲染输入：检查时为插值提供值的受版本控制内容，即各组合自己的覆盖模板。生成模板以示例值标记注释提供值，豁免（手写或上游同步）模板以 dotenv 活赋值提供值。
+- 替代组：一组不能在同一部署环境中共存的 stack，最多选择其中一个，也允许都不选；只声明对称互斥关系，不指定优先级，不执行部署替换。
 - 批准：对某条规则的显式例外记录。
 - 覆盖模板：stack 目录下自动生成的 `.env.example`，列出可覆盖的部署输入，同时以示例值标记充当该组合的静态渲染输入。
 
@@ -72,6 +73,10 @@ env_group = "LITESTREAM_"
 optional_wiring_variables = ["LITESTREAM_REPLICA_SCOPE"]
 # 该模块的服务渲染后这些前缀的变量必须非空
 required_environment = { service = "litestream", prefix = "LITESTREAM_" }
+
+[[deployment.alternatives]]
+name = "traefik"
+stacks = ["stacks/edge/traefik", "stacks/stump/traefik"]
 
 [ports]
 # 共享根目录与其余每个部署根目录各组成一个分组
@@ -117,6 +122,7 @@ retries = 2
 - 在每个部署根目录下递归查找 `compose_filenames` 中的文件，每个命中即一个 stack。
 - 命令的目标参数可以是 stack 目录、Compose 文件或路径片段；目标未匹配任何 stack 时失败。
 - 输出顺序按仓库相对路径排序，保证确定性。
+- `[[deployment.alternatives]]` 名称必须非空且唯一，每组至少两个规范仓库相对 stack 目录；组内重复或跨组重叠成员、未知字段均报错。发现完成后，全部成员必须是已发现的 stack，不接受路径片段或 Compose 文件路径；局部选择目标前验证，失效条目不可静默忽略。
 
 ### 加载与渲染
 
@@ -160,9 +166,9 @@ retries = 2
 - 模块 wiring：stack include 了已注册模块时，stack 目录必须有对应 wiring 文件，变量集合等于模块模板去掉可选变量；静态渲染输入不得重复声明 wiring 变量，示例值标记不得为 wiring 变量提供值；未 include 模块却存在 wiring 文件视为孤儿文件。
 - 模块必需环境：按 `required_environment` 检查模块服务渲染后的对应变量非空，且未插值视图中至少声明了一个这样的变量。
 - 宿主机绑定变量：从未插值视图读取端口的宿主机 IP 插值变量（短语法前缀或长语法 `host_ip`），只能是 `bind_address.default_variable`；其他变量需要 `[[approvals.bind_address]]` 批准，变量集合必须完全一致。变量提取使用插值分析能力，不用正则。
-- 发布端口唯一：每个分组内同一端口和协议只能发布一次，端口范围展开计算。重复需要 `[[approvals.published_port]]` 批准，binding 集合（Compose 文件、服务、宿主机 IP）必须完全一致。
+- 发布端口唯一：每个分组内可共存 stack 的同一端口和协议只能发布一次，端口范围展开计算。替代组成员之间不比较，但它们各自与其他可共存 stack 的冲突以及 stack 内部的冲突照常检查；诊断只列实际可共存的冲突方。重复需要 `[[approvals.published_port]]` 批准，binding 集合（Compose 文件、服务、宿主机 IP）必须完全一致。
 - 卷命名：顶层卷渲染后必须是对象且有非空 `name`，并且 `name` 必须在源文件中显式写出（基于源文件关系判断，不依赖 Compose 自动生成的名字）。
-- 资源所有权：所有被扫描 stack 的顶层 volume/network 按渲染后的实际 `name`（缺省时按资源键）比较，并遵循 `ports.shared_roots` 分组：所有 shared roots 加入每个非共享 root 的独立组，组间不比较。卷由 `resource_ownership.volumes_mode`、网络由 `resource_ownership.networks_mode` 独立配置，各自缺省为 `host-own`。同一资源在组内跨 stack 重复声明时，`host-own` 要求全部声明 `external: true`；`stack-own` 要求恰有一个 stack 非 external，其余 stack 全部 external；`either` 允许两种模式。三种模式均禁止多个 stack-own。同一 stack 的互斥变体不重复计为多个 owner。旧 `resource_ownership.mode` 不再接受，按未知键报错。
+- 资源所有权：所有被扫描 stack 的顶层 volume/network 按渲染后的实际 `name`（缺省时按资源键）比较，并遵循 `ports.shared_roots` 分组：所有 shared roots 加入每个非共享 root 的独立组，组间不比较。卷由 `resource_ownership.volumes_mode`、网络由 `resource_ownership.networks_mode` 独立配置，各自缺省为 `host-own`。同一资源在组内跨 stack 重复声明时，`host-own` 要求全部声明 `external: true`；`stack-own` 要求恰有一个 stack 非 external，其余 stack 全部 external；`either` 允许两种模式。三种模式均禁止多个 stack-own。同一 stack 的互斥变体不重复计为多个 owner。替代组按各个成员选择以及不选择任何成员分别检查，每个选择中只比较可共存声明；两个替代 owner 不算重复，但替代关系不能掩盖与其他 stack 的重复 owner 或缺失 owner。替代组不改变分组边界，不参与端口和资源以外的规则过滤，镜像、env、wiring 等规则仍检查全部成员。旧 `resource_ownership.mode` 不再接受，按未知键报错。
 - 过期批准：批准目标不存在、规则恢复默认合规或批准内容与现状不符时报错。局部检查只在批准引用的全部 Compose 文件都在本次范围内时判断过期。
 - 固定值文件键集合：`env.fixed_files` 登记的 stack 内文件（例如 git 跟踪的 `.env.conf`，由部署工具合并进 `.env`）必须每个键都被该 stack 引用。引用集合是全部组合 include 图中所有 YAML 值引用的插值变量并集，减去 wiring 文件声明的键、wiring 文件值内引用的外部变量（部署时由 `.env` 填充）和 `bind_address.default_variable`；比较只用键集合，值不参与渲染。文件不存在时跳过；存在但解析失败报错。键集合与 `.env.secrets` 的不相交检查留在仓库侧脚本，不属于 stacklint。
 
@@ -303,7 +309,7 @@ retries = 2
 ## 已实现决策（M3）
 
 - `check` 渲染 base 及全部已登记变体组合，逐组合执行规则，诊断带 variant 维度；变体渲染输入池追加该变体的 `ci_env_files`（显式登记的文件必须存在）。
-- 发布端口唯一性按"共享根 ∪ 其余每个部署根"分组、跨 stack 比对：冲突对必须来自不同 stack，或同 stack 同变体内的不同绑定（含同服务同端口不同 host_ip 的重复发布）。批准 slot 为（组、端口、协议），组从 bindings 的 Compose 路径派生，恰好一个非共享根。
+- 发布端口唯一性按"共享根 ∪ 其余每个部署根"分组、跨 stack 比对：冲突对必须来自可共存的不同 stack，或同 stack 同变体内的不同绑定（含同服务同端口不同 host_ip 的重复发布）。批准 slot 为（组、端口、协议），组从 bindings 的 Compose 路径派生，恰好一个非共享根。
 - `check` 不支持 `--variant`，始终检查选中 stack 的全部组合。
 - 插值分析提取为 `internal/interp`（compose-go template 记录型求值），镜像引用解析为 `internal/imageref`（distribution/reference），模块 include 图与 wiring 变量集为 `internal/wiring`；check 与 envtemplate 共用同一语义来源。
 - 规则架构：`internal/check` 每条规则一个文件，统一 `(ruleContext) → []Diagnostic`；wiring 与模块必需环境是 stack 级规则，每 stack 在 base 组合上跑一遍，模块归属取全部组合 include 图的并集。include 路径解析遵循 compose-go：path 相对引用方 workingDir，`project_directory` 只成为被 include 文件的工作目录。

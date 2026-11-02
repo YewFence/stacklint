@@ -53,3 +53,17 @@ Exit codes: `0` everything passed (warnings allowed), `1` check failures, `2` us
 ## What goes in a Compose file
 
 Variables in `compose.yaml` are documented and constrained by `@env-*` comment markers — `@env` (description), `@env-preamble` (group lead-in), `@env-source` (external provider), and `@env-example` (example value for checks). These markers are the only place stacklint learns variable intent; they live next to the expression they describe. See [Env Markers](/guide/env-markers) for the full concept guide.
+
+## Alternative stacks
+
+When two stacks provide alternative implementations that must never run together in the same deployment environment, declare their relationship explicitly:
+
+```toml
+[[deployment.alternatives]]
+name = "proxy"
+stacks = ["stacks/edge/proxy", "stacks/nas/proxy"]
+```
+
+Each group permits at most one member, including the option to deploy none. This removes port and resource ownership conflicts between the alternatives while preserving checks against other stacks and within each stack. Every member still receives image, environment, and wiring checks. The declaration does not select or deploy a stack and does not alter the existing root groups.
+
+Names must be nonempty and unique, each group needs at least two distinct discovered stack directories, and a stack can belong to only one group. Remove port approvals that become unnecessary after declaring alternatives; stale approval checks will report them.

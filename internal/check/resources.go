@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/YewFence/stacklint/internal/config"
 )
@@ -54,37 +55,78 @@ func checkResourceOwnership(combinations []*ruleContext) []Diagnostic {
 					stacks[stack] = declarations
 				}
 			}
-			if len(stacks) < 2 {
-				continue
-			}
-			owners := 0
-			for _, declarations := range stacks {
-				if hasOwner(declarations) {
-					owners++
+			reported := map[resourceDeclaration]bool{}
+			for _, selection := range resourceSelections(combinations[0].cfg.Deployment, stacks) {
+				if len(selection) < 2 {
+					continue
 				}
-			}
-			valid := mode == config.ResourceOwnershipEither && owners <= 1 ||
-				mode == config.ResourceOwnershipHostOwn && owners == 0 ||
-				mode == config.ResourceOwnershipStackOwn && owners == 1
-			if valid {
-				continue
-			}
-			for _, declarations := range stacks {
-				for _, declaration := range declarations {
-					if mode == config.ResourceOwnershipHostOwn && declaration.external {
-						continue
+				owners := 0
+				for _, stack := range selection {
+					if hasOwner(stacks[stack]) {
+						owners++
 					}
-					if mode != config.ResourceOwnershipHostOwn && owners > 0 && declaration.external {
-						continue
+				}
+				valid := mode == config.ResourceOwnershipEither && owners <= 1 ||
+					mode == config.ResourceOwnershipHostOwn && owners == 0 ||
+					mode == config.ResourceOwnershipStackOwn && owners == 1
+				if valid {
+					continue
+				}
+				for _, stack := range selection {
+					for _, declaration := range stacks[stack] {
+						if reported[declaration] || mode == config.ResourceOwnershipHostOwn && declaration.external ||
+							mode != config.ResourceOwnershipHostOwn && owners > 0 && declaration.external {
+							continue
+						}
+						reported[declaration] = true
+						message := resourceOwnershipMessage(identity, mode, groupName)
+						diagnostics = append(diagnostics, declaration.context.diagnose("resource_owner", "", message,
+							resourceOwnershipHint(mode)))
 					}
-					message := resourceOwnershipMessage(identity, mode, groupName)
-					diagnostics = append(diagnostics, declaration.context.diagnose("resource_owner", "", message,
-						resourceOwnershipHint(mode)))
 				}
 			}
 		}
 	}
 	return diagnostics
+}
+
+// resourceSelections expands only alternative groups touching this resource.
+// An alternative group may contribute no stack at all.
+func resourceSelections(deployment config.DeploymentConfig, stacks map[string][]resourceDeclaration) [][]string {
+	grouped := map[string]bool{}
+	var choices [][][]string
+	for _, group := range deployment.Alternatives {
+		var options [][]string
+		for _, stack := range group.Stacks {
+			grouped[stack] = true
+			if _, exists := stacks[stack]; exists {
+				options = append(options, []string{stack})
+			}
+		}
+		if len(options) == 0 {
+			continue
+		}
+		options = append(options, nil)
+		choices = append(choices, options)
+	}
+	var common []string
+	for stack := range stacks {
+		if !grouped[stack] {
+			common = append(common, stack)
+		}
+	}
+	slices.Sort(common)
+	selections := [][]string{common}
+	for _, options := range choices {
+		var next [][]string
+		for _, selection := range selections {
+			for _, option := range options {
+				next = append(next, append(slices.Clone(selection), option...))
+			}
+		}
+		selections = next
+	}
+	return selections
 }
 
 func resourceOwnershipMessage(identity resourceIdentity, mode, group string) string {

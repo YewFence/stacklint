@@ -128,7 +128,7 @@ func checkPublishedPorts(cfg *config.Config, approvals *config.Approvals, combos
 			var conflicts []portUsage
 			for _, u := range group {
 				for _, v := range group {
-					if u != v && conflictsWith(u, v) {
+					if u != v && cfg.Deployment.CanCoexist(u.stack, v.stack) && conflictsWith(u, v) {
 						conflicts = append(conflicts, u)
 						break
 					}
@@ -167,7 +167,7 @@ func checkPublishedPorts(cfg *config.Config, approvals *config.Approvals, combos
 			for _, usage := range bindings {
 				var others []string
 				for _, other := range bindings {
-					if other != usage {
+					if other != usage && cfg.Deployment.CanCoexist(usage.stack, other.stack) && conflictsWith(usage, other) {
 						others = append(others, other.compose+":"+other.service)
 					}
 				}

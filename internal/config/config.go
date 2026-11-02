@@ -15,6 +15,7 @@ import (
 // Config is the repository policy loaded from stacklint.toml.
 type Config struct {
 	Repository        RepositoryConfig        `toml:"repository"`
+	Deployment        DeploymentConfig        `toml:"deployment"`
 	Modules           []ModuleConfig          `toml:"module"`
 	Ports             PortsConfig             `toml:"ports"`
 	BindAddress       BindAddressConfig       `toml:"bind_address"`
@@ -229,6 +230,9 @@ func (c *Config) validate() error {
 		if m.RequiredEnvironment != nil && (m.RequiredEnvironment.Service == "" || m.RequiredEnvironment.Prefix == "") {
 			return fmt.Errorf("module[%d].required_environment: service and prefix are required", i)
 		}
+	}
+	if err := c.Deployment.validate(); err != nil {
+		return err
 	}
 	return c.validateEnv()
 }

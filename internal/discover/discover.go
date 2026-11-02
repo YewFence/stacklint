@@ -60,6 +60,17 @@ func FindAll(cfg *config.Config, repoRoot string) ([]Stack, error) {
 		}
 	}
 	sort.Slice(stacks, func(i, j int) bool { return stacks[i].RelPath < stacks[j].RelPath })
+	known := map[string]bool{}
+	for _, stack := range stacks {
+		known[stack.RelPath] = true
+	}
+	for _, group := range cfg.Deployment.Alternatives {
+		for _, stack := range group.Stacks {
+			if !known[stack] {
+				return nil, fmt.Errorf("%w: deployment alternative %q references undiscovered stack %q", config.ErrValidate, group.Name, stack)
+			}
+		}
+	}
 	return stacks, nil
 }
 
