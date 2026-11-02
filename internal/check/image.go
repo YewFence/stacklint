@@ -9,7 +9,7 @@ import (
 )
 
 // checkImages requires every service image to be pinned to a sha256 digest or
-// covered by a matching [[image]] approval. Empty tags and malformed digests
+// covered by a matching [[approvals.image]] approval. Empty tags and malformed digests
 // are never approvable.
 func checkImages(c *ruleContext) []Diagnostic {
 	var diagnostics []Diagnostic
@@ -37,7 +37,7 @@ func checkImages(c *ruleContext) []Diagnostic {
 		if approval == nil {
 			diagnostics = append(diagnostics, c.diagnose("image", serviceName,
 				fmt.Sprintf("image %s %s", image, violation.Reason),
-				"Use a valid sha256 digest, or add an [[image]] approval for this compose/service/repository with an explicit rule (exact-tag, floating-tag, major, major-minor) and a reason in approvals.toml."))
+				"Use a valid sha256 digest, or add an [[approvals.image]] approval for this compose/service/repository with an explicit rule (exact-tag, floating-tag, major, major-minor) and a reason in stacklint.toml."))
 			continue
 		}
 		c.reviewed.images[imageKey(compose, serviceName)] = true
@@ -49,7 +49,7 @@ func checkImages(c *ruleContext) []Diagnostic {
 		}, ref); mismatch != "" {
 			diagnostics = append(diagnostics, c.diagnose("image", serviceName,
 				fmt.Sprintf("image %s %s; existing approval does not match because %s", image, violation.Reason, mismatch),
-				"Use a valid sha256 digest, or update the [[image]] rule in approvals.toml after reviewing the new policy."))
+				"Use a valid sha256 digest, or update the [[approvals.image]] rule in stacklint.toml after reviewing the new policy."))
 		}
 	}
 	return diagnostics

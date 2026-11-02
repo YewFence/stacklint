@@ -27,7 +27,7 @@ func newCheckCommand() *cobra.Command {
 						Severity: "error",
 						Rule:     "configuration",
 						Message:  err.Error(),
-						Hint:     "Check stacklint.toml, approvals.toml and target selection.",
+						Hint:     "Check stacklint.toml and target selection.",
 					}},
 					ExitCode: 2,
 				}
@@ -59,7 +59,7 @@ func runCheck(cmd *cobra.Command, args []string) (*check.Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	approvals, err := config.LoadApprovals(dir, root, cfg)
+	approvals, err := cfg.ValidateApprovals(root)
 	if err != nil {
 		return nil, err
 	}

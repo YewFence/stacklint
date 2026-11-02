@@ -28,6 +28,14 @@ func newFixture(t *testing.T) *fixture {
 func (f *fixture) write(path, content string) {
 	f.t.Helper()
 	absolute := filepath.Join(f.dir, path)
+	if path == "stacklint.toml" && strings.HasPrefix(content, "[[approvals.") {
+		existing, err := os.ReadFile(absolute)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		policy, _, _ := strings.Cut(string(existing), "[[approvals.")
+		content = policy + content
+	}
 	if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 		f.t.Fatal(err)
 	}
@@ -70,7 +78,7 @@ func (f *fixture) run(t *testing.T, targets ...string) *check.Report {
 		}
 		stacks = selected
 	}
-	approvals, err := config.LoadApprovals(f.dir, f.dir, cfg)
+	approvals, err := cfg.ValidateApprovals(f.dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +143,7 @@ func TestCheckUnpinnedImageNeedsApproval(t *testing.T) {
 		t.Fatalf("expected exit 1, got %d", report.ExitCode)
 	}
 
-	f.write("approvals.toml", `[[image]]
+	f.write("stacklint.toml", `[[approvals.image]]
 compose = "stacks/app/web/compose.yaml"
 service = "web"
 repository = "traefik"
@@ -152,7 +160,7 @@ func TestCheckImageApprovalMismatch(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml())
 	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: traefik:v3.1\n")
-	f.write("approvals.toml", `[[image]]
+	f.write("stacklint.toml", `[[approvals.image]]
 compose = "stacks/app/web/compose.yaml"
 service = "web"
 repository = "traefik"
@@ -169,7 +177,7 @@ func TestCheckImageMalformedNotApprovable(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml())
 	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: traefik:v3@sha256:bad\n")
-	f.write("approvals.toml", `[[image]]
+	f.write("stacklint.toml", `[[approvals.image]]
 compose = "stacks/app/web/compose.yaml"
 service = "web"
 repository = "traefik"
@@ -186,7 +194,7 @@ func TestCheckStaleImageApproval(t *testing.T) {
 	f := newFixture(t)
 	f.write("stacklint.toml", f.configToml())
 	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: "+pinnedImage+"\n")
-	f.write("approvals.toml", `[[image]]
+	f.write("stacklint.toml", `[[approvals.image]]
 compose = "stacks/app/web/compose.yaml"
 service = "web"
 repository = "ghcr.io/org/app"
@@ -208,7 +216,7 @@ func TestCheckEnvFileRule(t *testing.T) {
 		t.Fatalf("expected env_file diagnostic, got %v", rules(report))
 	}
 
-	f.write("approvals.toml", `[[env_file]]
+	f.write("stacklint.toml", `[[approvals.env_file]]
 compose = "stacks/app/web/compose.yaml"
 service = "web"
 path = ".env"
@@ -229,7 +237,7 @@ func TestCheckBindAddressRule(t *testing.T) {
 		t.Fatalf("expected bind_address diagnostic, got %v", rules(report))
 	}
 
-	f.write("approvals.toml", `[[bind_address]]
+	f.write("stacklint.toml", `[[approvals.bind_address]]
 compose = "stacks/app/web/compose.yaml"
 service = "web"
 variables = ["CUSTOM_BIND"]
@@ -241,7 +249,7 @@ reason = "Dual-homed host."
 	}
 
 	// Approval with a different variable set must not match.
-	f.write("approvals.toml", `[[bind_address]]
+	f.write("stacklint.toml", `[[approvals.bind_address]]
 compose = "stacks/app/web/compose.yaml"
 service = "web"
 variables = ["OTHER_BIND"]
@@ -263,7 +271,7 @@ func TestCheckPublishedPortConflict(t *testing.T) {
 		t.Fatalf("expected port conflict, got %v", rules(report))
 	}
 
-	f.write("approvals.toml", `[[published_port]]
+	f.write("stacklint.toml", `[[approvals.published_port]]
 port = 8080
 protocol = "tcp"
 reason = "Both proxies intentionally reserve the port."
@@ -676,7 +684,7 @@ func TestCheckFixedEnvFilesSkipsEnvFilePassthroughExemption(t *testing.T) {
 	f.write("stacklint.toml", f.configToml()+"\n[env]\nfixed_files = ['.env.conf']\n")
 	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: "+pinnedImage+"\n")
 	f.write("stacks/app/web/.env.conf", "SMTP_HOST=smtp.example.com\n")
-	f.write("approvals.toml", `[[env_exemption]]
+	f.write("stacklint.toml", `[[approvals.env_exemption]]
 stack = 'stacks/app/web'
 kind = 'env-file-passthrough'
 reason = "Application reads environment from the merged .env file."
@@ -693,7 +701,7 @@ func TestCheckPartialScopeSkipsStaleJudgement(t *testing.T) {
 	f.write("stacks/app/web/compose.yaml", "name: web\nservices:\n  web:\n    image: "+pinnedImage+"\n")
 	f.write("stacks/app/other/compose.yaml", "name: other\nservices:\n  other:\n    image: "+pinnedImage+"\n")
 	// Approval targets a stack outside the checked scope; must not be judged stale.
-	f.write("approvals.toml", `[[image]]
+	f.write("stacklint.toml", `[[approvals.image]]
 compose = "stacks/app/other/compose.yaml"
 service = "other"
 repository = "ghcr.io/org/app"

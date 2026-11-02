@@ -284,7 +284,7 @@ func runImagesList(cmd *cobra.Command, ref string) error {
 				Severity: "error",
 				Rule:     "configuration",
 				Message:  err.Error(),
-				Hint:     "Check stacklint.toml, approvals.toml and target selection.",
+				Hint:     "Check stacklint.toml and target selection.",
 			}},
 			ExitCode: 2,
 		}

@@ -10,7 +10,7 @@ import (
 )
 
 // checkEnvFiles flags service-level env_file entries that resolve to the stack
-// directory's .env, unless a matching [[env_file]] approval exists. Entries
+// directory's .env, unless a matching [[approvals.env_file]] approval exists. Entries
 // pointing at other files are not constrained by this rule.
 func checkEnvFiles(c *ruleContext) []Diagnostic {
 	services, ok := c.render.Raw["services"].(map[string]any)
@@ -36,7 +36,7 @@ func checkEnvFiles(c *ruleContext) []Diagnostic {
 			}
 			diagnostics = append(diagnostics, c.diagnose("env_file", serviceName,
 				fmt.Sprintf("service %s uses project .env through env_file", serviceName),
-				"Declare the service variables in environment, or add an [[env_file]] approval with the exact compose/service/path and a reason in approvals.toml."))
+				"Declare the service variables in environment, or add an [[approvals.env_file]] approval with the exact compose/service/path and a reason in stacklint.toml."))
 		}
 	}
 	return diagnostics

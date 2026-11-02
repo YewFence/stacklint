@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/BurntSushi/toml"
 	"github.com/YewFence/stacklint/internal/imageref"
 )
 
@@ -61,16 +60,8 @@ type EnvFileApproval struct {
 	Reason  string `toml:"reason"`
 }
 
-// Approvals is the validated content of approvals.toml.
+// Approvals contains the approvals and exemptions declared in stacklint.toml.
 type Approvals struct {
-	Images     []ImageApproval
-	Ports      []PortApproval
-	Binds      []BindApproval
-	EnvFiles   []EnvFileApproval
-	Exemptions []EnvExemption
-}
-
-type decodedApprovals struct {
 	Images     []ImageApproval   `toml:"image"`
 	Ports      []PortApproval    `toml:"published_port"`
 	Binds      []BindApproval    `toml:"bind_address"`
@@ -78,33 +69,9 @@ type decodedApprovals struct {
 	Exemptions []EnvExemption    `toml:"env_exemption"`
 }
 
-func decodeApprovals(configDir string) (*decodedApprovals, error) {
-	path := filepath.Join(configDir, ApprovalsFileName)
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return &decodedApprovals{}, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%w: read approvals.toml: %v", ErrLoad, err)
-	}
-	var approvals decodedApprovals
-	metadata, err := toml.Decode(string(data), &approvals)
-	if err != nil {
-		return nil, fmt.Errorf("%w: cannot parse approvals.toml", ErrLoad)
-	}
-	if len(metadata.Undecoded()) > 0 {
-		return nil, fmt.Errorf("%w: unknown approvals.toml keys: %v", ErrValidate, metadata.Undecoded())
-	}
-	return &approvals, nil
-}
-
-// LoadEnvExemptions reads approvals.toml without executing unrelated approval rules.
-func LoadEnvExemptions(configDir string) (map[string]EnvExemption, error) {
-	approvals, err := decodeApprovals(configDir)
-	if err != nil {
-		return nil, err
-	}
-	return validateExemptions(approvals.Exemptions)
+// EnvExemptions validates template exemptions without executing unrelated approval rules.
+func (c *Config) EnvExemptions() (map[string]EnvExemption, error) {
+	return validateExemptions(c.Approvals.Exemptions)
 }
 
 func validateExemptions(exemptions []EnvExemption) (map[string]EnvExemption, error) {
@@ -135,14 +102,9 @@ func validateExemptions(exemptions []EnvExemption) (map[string]EnvExemption, err
 	return result, nil
 }
 
-// LoadApprovals reads and validates approvals.toml for the check command.
-// A missing file yields empty approvals. Invalid entries fail the load:
-// approvals are safety-relevant and never silently ignored.
-func LoadApprovals(configDir string, repoRoot string, cfg *Config) (*Approvals, error) {
-	decoded, err := decodeApprovals(configDir)
-	if err != nil {
-		return nil, err
-	}
+// ValidateApprovals validates all approvals for the check command.
+func (cfg *Config) ValidateApprovals(repoRoot string) (*Approvals, error) {
+	decoded := &cfg.Approvals
 	if _, err := validateExemptions(decoded.Exemptions); err != nil {
 		return nil, err
 	}

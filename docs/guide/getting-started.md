@@ -34,7 +34,7 @@ output = ".env.example"
 floating_tags = ["latest", "main"]
 ```
 
-Explicit approvals and exemptions live in an optional `approvals.toml` next to it. Unknown keys, duplicates, and missing targets are all hard errors — stacklint fails closed rather than guessing. The full schema and rule semantics are specified in the [requirements document](/design/requirements).
+Explicit approvals and exemptions live in the same file under typed tables such as `[[approvals.image]]`, `[[approvals.published_port]]`, and `[[approvals.env_exemption]]`. The `approvals` namespace is optional. Move entries from the former standalone `approvals.toml` into these tables and remove the old file; a leftover file is a configuration error. Unknown keys, duplicates, and missing targets are all hard errors — stacklint fails closed rather than guessing. The full schema and rule semantics are specified in the [requirements document](/design/requirements).
 
 ## Usage
 

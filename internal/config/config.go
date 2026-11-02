@@ -21,6 +21,7 @@ type Config struct {
 	ResourceOwnership ResourceOwnershipConfig `toml:"resource_ownership"`
 	Env               EnvConfig               `toml:"env"`
 	Images            ImagesConfig            `toml:"images"`
+	Approvals         Approvals               `toml:"approvals"`
 }
 
 type RepositoryConfig struct {
@@ -155,6 +156,11 @@ var (
 // Load reads and validates stacklint.toml from the given configuration directory.
 // Unknown keys, wrong types, and duplicate entries fail. Missing optional sections are allowed.
 func Load(configDir string) (*Config, error) {
+	if _, err := os.Lstat(filepath.Join(configDir, "approvals.toml")); err == nil {
+		return nil, fmt.Errorf("%w: move approvals.toml entries into [[approvals.<type>]] tables in stacklint.toml and remove approvals.toml", ErrValidate)
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("%w: inspect approvals.toml: %v", ErrLoad, err)
+	}
 	path := filepath.Join(configDir, FileName)
 	data, err := os.ReadFile(path)
 	if err != nil {

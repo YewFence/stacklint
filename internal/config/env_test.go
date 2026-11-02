@@ -72,23 +72,26 @@ func TestEnvExemptionValidation(t *testing.T) {
 		name, content string
 		valid         bool
 	}{
-		{"pending", "[[env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\n", true},
-		{"upstream", "[[env_exemption]]\nstack = 'stacks/app'\nkind = 'upstream'\nreason = 'upstream interface'\nsource = 'https://example.invalid/env'\n", true},
-		{"passthrough", "[[env_exemption]]\nstack = 'stacks/app'\nkind = 'env-file-passthrough'\nreason = 'application interface'\n", true},
-		{"missing reason", "[[env_exemption]]\nstack = 'stacks/app'\nkind = 'env-file-passthrough'\n", false},
-		{"missing source", "[[env_exemption]]\nstack = 'stacks/app'\nkind = 'upstream'\nreason = 'interface'\n", false},
-		{"unknown kind", "[[env_exemption]]\nstack = 'stacks/app'\nkind = 'unknown'\n", false},
-		{"unknown key", "[[env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\nunknown = 'bad'\n", false},
-		{"duplicate stack", "[[env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\n[[env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\n", false},
-		{"other rules preserved", "[[image]]\ncompose = 'stacks/app/compose.yaml'\nservice = 'app'\nrepository = 'busybox'\nrule = 'floating-tag'\nreason = 'approved'\n[[published_port]]\nport = 80\nprotocol = 'tcp'\nreason = 'shared port'\nbindings = [{compose='stacks/app/compose.yaml', service='app', host_ip='*'}]\n", true},
+		{"pending", "[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\n", true},
+		{"upstream", "[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'upstream'\nreason = 'upstream interface'\nsource = 'https://example.invalid/env'\n", true},
+		{"passthrough", "[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'env-file-passthrough'\nreason = 'application interface'\n", true},
+		{"missing reason", "[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'env-file-passthrough'\n", false},
+		{"missing source", "[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'upstream'\nreason = 'interface'\n", false},
+		{"unknown kind", "[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'unknown'\n", false},
+		{"unknown key", "[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\nunknown = 'bad'\n", false},
+		{"duplicate stack", "[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\n[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\n", false},
+		{"other rules preserved", "[[approvals.image]]\ncompose = 'stacks/app/compose.yaml'\nservice = 'app'\nrepository = 'busybox'\nrule = 'floating-tag'\nreason = 'approved'\n[[approvals.published_port]]\nport = 80\nprotocol = 'tcp'\nreason = 'shared port'\nbindings = [{compose='stacks/app/compose.yaml', service='app', host_ip='*'}]\n", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(dir, "approvals.toml"), []byte(tt.content), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "stacklint.toml"), []byte(tt.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, err := LoadEnvExemptions(dir)
+			cfg, err := Load(dir)
+			if err == nil {
+				_, err = cfg.EnvExemptions()
+			}
 			if tt.valid && err != nil {
 				t.Fatal(err)
 			}

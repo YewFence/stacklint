@@ -51,10 +51,7 @@ CLI 从一个配置目录读取全部策略，按以下优先级确定，命中�
 
 ### 配置文件
 
-配置文件位于仓库根目录，无隐藏目录：
-
-- `stacklint.toml`：仓库策略，必需。
-- `approvals.toml`：全部批准与豁免记录，可选；不存在等价于没有任何批准。
+配置文件是仓库根目录的 `stacklint.toml`，包含仓库策略和可选的 `approvals` 命名空间。没有批准与豁免时省略该命名空间。旧的独立 `approvals.toml` 不再接受；存在时直接报迁移错误，要求将条目改为 `[[approvals.<type>]]` 并移除旧文件。
 
 `stacklint.toml` 中的 `repository.root` 相对配置目录解析，缺省为配置目录本身。部署根、模块 Compose、`env.include_env_files`、变体的 stack、files 使用仓库相对路径；wiring_file 相对引用模块的项目目录。env 输出必须是 stack 内的文件名，不能是部署 `.env` 或 `.env.secrets`。未知键、错误类型、重复项均失败。
 
@@ -111,7 +108,7 @@ timeout = "30s"
 retries = 2
 ```
 
-`approvals.toml` 保持既有 `[[image]]`、`[[published_port]]`、`[[bind_address]]`、`[[env_file]]` 的结构和语义，新增 `[[env_exemption]]`，见下文 env 部分。
+`stacklint.toml` 的 `approvals` 命名空间保留 `[[approvals.image]]`、`[[approvals.published_port]]`、`[[approvals.bind_address]]`、`[[approvals.env_file]]` 的结构和语义，新增 `[[approvals.env_exemption]]`，见下文 env 部分。
 
 ## 核心能力
 
@@ -158,12 +155,12 @@ retries = 2
 渲染选中的 stack 并执行规则，未给目标时检查全部 stack。规则（与既有 Python 工具 compose-checks 语义一致）：
 
 - 基础结构：渲染结果必须有非空顶层 `name` 和非空 `services`。
-- 镜像引用：digest 必须是 `sha256:` 加 64 位小写十六进制；空 tag 和格式错误的 digest 不可批准。未固定 digest 的引用需要 `[[image]]` 批准，绑定 Compose 文件、服务、仓库名和规则，规则为 `major`、`major-minor`、`floating-tag`、`exact-tag` 之一，可带 `tag` 或 `suffix`。已固定 digest 时对应批准视为冗余并报错。
-- 服务级 `env_file`：解析后指向 stack 目录 `.env` 的服务级 env_file 需要 `[[env_file]]` 批准；指向其他文件不受此规则约束。
+- 镜像引用：digest 必须是 `sha256:` 加 64 位小写十六进制；空 tag 和格式错误的 digest 不可批准。未固定 digest 的引用需要 `[[approvals.image]]` 批准，绑定 Compose 文件、服务、仓库名和规则，规则为 `major`、`major-minor`、`floating-tag`、`exact-tag` 之一，可带 `tag` 或 `suffix`。已固定 digest 时对应批准视为冗余并报错。
+- 服务级 `env_file`：解析后指向 stack 目录 `.env` 的服务级 env_file 需要 `[[approvals.env_file]]` 批准；指向其他文件不受此规则约束。
 - 模块 wiring：stack include 了已注册模块时，stack 目录必须有对应 wiring 文件，变量集合等于模块模板去掉可选变量；静态渲染输入不得重复声明 wiring 变量，示例值标记不得为 wiring 变量提供值；未 include 模块却存在 wiring 文件视为孤儿文件。
 - 模块必需环境：按 `required_environment` 检查模块服务渲染后的对应变量非空，且未插值视图中至少声明了一个这样的变量。
-- 宿主机绑定变量：从未插值视图读取端口的宿主机 IP 插值变量（短语法前缀或长语法 `host_ip`），只能是 `bind_address.default_variable`；其他变量需要 `[[bind_address]]` 批准，变量集合必须完全一致。变量提取使用插值分析能力，不用正则。
-- 发布端口唯一：每个分组内同一端口和协议只能发布一次，端口范围展开计算。重复需要 `[[published_port]]` 批准，binding 集合（Compose 文件、服务、宿主机 IP）必须完全一致。
+- 宿主机绑定变量：从未插值视图读取端口的宿主机 IP 插值变量（短语法前缀或长语法 `host_ip`），只能是 `bind_address.default_variable`；其他变量需要 `[[approvals.bind_address]]` 批准，变量集合必须完全一致。变量提取使用插值分析能力，不用正则。
+- 发布端口唯一：每个分组内同一端口和协议只能发布一次，端口范围展开计算。重复需要 `[[approvals.published_port]]` 批准，binding 集合（Compose 文件、服务、宿主机 IP）必须完全一致。
 - 卷命名：顶层卷渲染后必须是对象且有非空 `name`，并且 `name` 必须在源文件中显式写出（基于源文件关系判断，不依赖 Compose 自动生成的名字）。
 - 资源所有权：所有被扫描 stack 的顶层 volume/network 按渲染后的实际 `name`（缺省时按资源键）比较，并遵循 `ports.shared_roots` 分组：所有 shared roots 加入每个非共享 root 的独立组，组间不比较。卷由 `resource_ownership.volumes_mode`、网络由 `resource_ownership.networks_mode` 独立配置，各自缺省为 `host-own`。同一资源在组内跨 stack 重复声明时，`host-own` 要求全部声明 `external: true`；`stack-own` 要求恰有一个 stack 非 external，其余 stack 全部 external；`either` 允许两种模式。三种模式均禁止多个 stack-own。同一 stack 的互斥变体不重复计为多个 owner。旧 `resource_ownership.mode` 不再接受，按未知键报错。
 - 过期批准：批准目标不存在、规则恢复默认合规或批准内容与现状不符时报错。局部检查只在批准引用的全部 Compose 文件都在本次范围内时判断过期。
@@ -208,7 +205,7 @@ retries = 2
 
 覆盖范围与豁免：
 
-- 每个组合必须满足以下之一：已提交的模板与生成结果逐字节一致；或该 stack 在 `approvals.toml` 中有一条 `[[env_exemption]]`。豁免绑定整个 stack，覆盖基础及全部变体。
+- 每个组合必须满足以下之一：已提交的模板与生成结果逐字节一致；或该 stack 在 `stacklint.toml` 中有一条 `[[approvals.env_exemption]]`。豁免绑定整个 stack，覆盖基础及全部变体。
 - 生成是源 Compose 的纯函数，模板不持有任何策展状态，漂移检查逐字节比较。示例值不合法导致渲染失败（例如端口须为数字）时报错并定位变量，修正 compose.yaml 中的 `@env-example` 声明即可。
 - 豁免绑定 stack 目录，`kind` 为以下之一：
   - `env-file-passthrough`：服务级 `env_file` 透传项目 `.env`，示例需要承载上游应用的大规模接口。前提是 Compose 中确实存在这种透传；不再存在时过期。需要填写原因。
@@ -240,7 +237,7 @@ retries = 2
 
 - 按完整引用去重并发查询顶层 manifest 或 image index digest，不指定平台。
 - 固定 `repo:tag@digest` 时先查 tag；一致即通过；不一致或 tag 不存在时补查 digest。digest 存在但 tag 漂移或消失只产生 warning；digest 不存在或无法确认则失败。
-- `floating_tags` 中的标签和无标签的 digest 引用只验证 digest 存在；经过 `[[image]]` 批准而未固定 digest 的引用只验证 tag 存在，无 tag 按 `latest` 处理。
+- `floating_tags` 中的标签和无标签的 digest 引用只验证 digest 存在；经过 `[[approvals.image]]` 批准而未固定 digest 的引用只验证 tag 存在，无 tag 按 `latest` 处理。
 - `private_repositories` 中的仓库在没有凭据时 warning 并跳过；有凭据后任何失败按正常错误处理。404 不被推断为私有。
 - 全局与每个 registry 分别限并发；传输错误、429、5xx 重试，认证错误和 404 不重试。错误按 regclient 的结构化错误分类，不解析文本。
 - 默认增量：只检查当前引用集合中相对基线新出现的引用，基线缺省为 `origin/main`。`--full` 与 `--base` 互斥。`images` 配置或批准相对基线发生变化时自动改为全量。增量为空时成功且不访问 registry。
@@ -258,7 +255,7 @@ retries = 2
 
 ## 输出与退出码
 
-- 默认输出面向人读，按 Compose 文件分组，每条错误带修复提示（改配置，或在 `approvals.toml` 中添加或更新哪类批准）。
+- 默认输出面向人读，按 Compose 文件分组，每条错误带修复提示（改配置，或在 `stacklint.toml` 中添加或更新哪类批准）。
 - `--format json` 输出结构化结果，供 CI 和其他工具消费。
 - 退出码：`0` 全部通过（可以有 warning）；`1` 存在检查失败；`2` 用法错误、配置错误或无法完成检查。
 
@@ -279,7 +276,7 @@ retries = 2
 
 1. 配置目录、发现、加载、渲染和 `render` 命令。
 2. `env`：先迁一个 stack 试点，以既有 compose-env 的测试用例为对照。dotenv 解析结果与说明内容必须一致；引号风格允许改变，差异需要记录。
-3. `check`：逐条规则迁移，以 compose-checks 的测试用例为对照，`approvals.toml` 直接复用。
+3. `check`：逐条规则迁移，以 compose-checks 的测试用例为对照，批准条目迁入 `stacklint.toml` 的 `approvals` 命名空间。
 4. `images`：digest 检查与 `images list`。
 5. stacks 仓库切换到 stacklint，删除 `compose-env`、`compose-checks`、`images-digest-check`、`ops-compose`；运行时备份工具内联 `render_runtime_compose`；镜像清单消费方改为读取 `images list` 的输出；更新设计讨论中“不依赖 Go”的相关决策。
 
@@ -311,14 +308,14 @@ retries = 2
 - 插值分析提取为 `internal/interp`（compose-go template 记录型求值），镜像引用解析为 `internal/imageref`（distribution/reference），模块 include 图与 wiring 变量集为 `internal/wiring`；check 与 envtemplate 共用同一语义来源。
 - 规则架构：`internal/check` 每条规则一个文件，统一 `(ruleContext) → []Diagnostic`；wiring 与模块必需环境是 stack 级规则，每 stack 在 base 组合上跑一遍，模块归属取全部组合 include 图的并集。include 路径解析遵循 compose-go：path 相对引用方 workingDir，`project_directory` 只成为被 include 文件的工作目录。
 - 结构规则在未插值视图判断顶层 `name`（compose-go 会自动从目录名补名）；`env_file` 路径在未插值视图中已被解析为绝对路径。
-- `approvals.toml` 校验与既有 compose-checks 对齐：未知键、缺字段、非法规则/端口/变量、目标文件不存在、重复目标均报错；已固定 digest 的镜像批准视为冗余并在过期批准检查中报错。过期批准只在批准引用的全部 Compose 文件都在本次范围内时判断。
+- `stacklint.toml` 校验与既有 compose-checks 对齐：未知键、缺字段、非法规则/端口/变量、目标文件不存在、重复目标均报错；已固定 digest 的镜像批准视为冗余并在过期批准检查中报错。过期批准只在批准引用的全部 Compose 文件都在本次范围内时判断。
 - 卷命名扫描单文件 yaml.v3 节点（include 图内全部文件），渲染后必须有非空 `name` 且在源文件中显式写出。
 - M3 验收：stacks 仓库 38 个 stack base 组合与 compose-checks 输出一致（0 诊断）；变体 overlay 不在 oracle 覆盖范围，alloy-agent postgres 变体因 `POSTGRES_DATA_SOURCE_NAMES` 只有生成输出提供值而渲染失败，迁移时需为其登记 `ci_env_files`。
 
 ## 已实现决策（M4 设计定稿）
 
 - 按 Git ref 加载抽为通用内部包 `internal/refload`：go-git 纯 Go 读 `.git` 对象库（jj 共存仓库走其 git 后端），物化整树到临时目录，不碰工作区。接口通用，但 CLI 只在 `images digests --base` 与 `images list --ref` 暴露，不给 check/env 预设 `--ref`。
-- 策略单一来源：`stacklint.toml`/`approvals.toml` 永远取当前工作区版本，ref 只决定被加载的内容。digests 增量时额外解析基线 ref 的 `[images]` 段与 `approvals.toml` 的 `[[image]]` 条目做规范化语义比较（注释/重排不触发），变化则转全量。
+- 策略单一来源：`stacklint.toml` 永远取当前工作区版本，ref 只决定被加载的内容。digests 增量时额外解析基线 ref 的 `[images]` 段与 `stacklint.toml` 的 `[[approvals.image]]` 条目做规范化语义比较（注释/重排不触发），变化则转全量。
 - 基线 ref 渲染失败 → 转全量并 warning（全量结果本身完整，不违反默认失败原则）。
 - `images list` 记录 = stack + variant + Compose 文件 + 服务 + 引用，确定性排序，不去重；位置信息本身就是交付价值。
 - JSON 输出带 `"version": 1`，1.0 前不承诺 schema 稳定。
@@ -356,5 +353,5 @@ retries = 2
 - 引用集合：全部组合（base 及变体）include 图内所有 YAML **值**节点引用的插值变量并集，用现有 `internal/interp` 记录型求值逐字符串标量提取（compose-go 只对值插值、不对映射键插值，语义一致）；错误分支内嵌变量（`${A:?${B}}` 的 B）按 interp 求值观察计入，避免把真实输入误报为死条目。
 - 提供方扣除：模块 wiring 文件声明的键；wiring 文件值内引用的外部变量（dotenv 求值 lookup 观察到且非自身声明——部署时由 `.env` 填充，是固定值的合法来源）；`bind_address.default_variable`。文件内自引用（`A=…${A}` 不存在）与 `$$` 转义由 compose-go 语义自然排除。
 - 诊断：逐文件报告不在引用集合内的死键，定位 stack 与文件名，提示删除条目或在 Compose 中补上引用；文件缺失跳过；存在但解析失败按默认失败报错。stack 级规则，base 组合上跑一遍，覆盖全部组合并集；渲染失败仍执行（同 wiring 规则先例，只读源文件）。
-- 与 `[[env_exemption]]` 无关：豁免覆盖模板生成，本规则检查另一个文件，不设批准通道（死条目没有正当理由，删掉或补引用二选一）。
+- 与 `[[approvals.env_exemption]]` 无关：豁免覆盖模板生成，本规则检查另一个文件，不设批准通道（死条目没有正当理由，删掉或补引用二选一）。
 - 与仓库侧分工：`.env.conf` 与 `.env.secrets` 的键集合不相交检查留在 stacks 仓库脚本，stacklint 不处理。

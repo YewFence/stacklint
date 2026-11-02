@@ -99,7 +99,7 @@ func conflictsWith(a, b portUsage) bool {
 }
 
 // checkPublishedPorts enforces published port uniqueness within each port
-// group and matches conflicts against [[published_port]] approvals.
+// group and matches conflicts against [[approvals.published_port]] approvals.
 func checkPublishedPorts(cfg *config.Config, approvals *config.Approvals, combos []*ruleContext, reviewed *reviewTracker) []Diagnostic {
 	var usages []portUsage
 	for _, c := range combos {
@@ -160,9 +160,9 @@ func checkPublishedPorts(cfg *config.Config, approvals *config.Approvals, combos
 			}
 			var hint string
 			if approval == nil {
-				hint = "Choose another published port, or add a [[published_port]] approval with the exact bindings and a reason in approvals.toml."
+				hint = "Choose another published port, or add a [[approvals.published_port]] approval with the exact bindings and a reason in stacklint.toml."
 			} else {
-				hint = fmt.Sprintf("Existing [[published_port]] approval does not match because %s; update it in approvals.toml after reviewing the changed bindings.", mismatch)
+				hint = fmt.Sprintf("Existing [[approvals.published_port]] approval does not match because %s; update it in stacklint.toml after reviewing the changed bindings.", mismatch)
 			}
 			for _, usage := range bindings {
 				var others []string

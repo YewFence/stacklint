@@ -42,13 +42,13 @@ func checkStaleApprovals(cfg *config.Config, approvals *config.Approvals, combos
 			if _, violation := imageref.Parse(current); violation == nil {
 				stale(approval.Compose, "stale_approval",
 					fmt.Sprintf("image approval for service %s with rule %s is unnecessary because %s is pinned to a digest", approval.Service, approval.Rule, current),
-					"Remove the redundant [[image]] approval from approvals.toml.")
+					"Remove the redundant [[approvals.image]] approval from stacklint.toml.")
 				continue
 			}
 		}
 		stale(approval.Compose, "stale_approval",
 			fmt.Sprintf("image approval for service %s and repository %s no longer has a rendered service or image", approval.Service, approval.Repository),
-			"Remove the stale [[image]] approval from approvals.toml.")
+			"Remove the stale [[approvals.image]] approval from stacklint.toml.")
 	}
 	for _, approval := range approvals.Ports {
 		group, err := cfg.PortGroup(approval)
@@ -66,7 +66,7 @@ func checkStaleApprovals(cfg *config.Config, approvals *config.Approvals, combos
 		}
 		stale(approval.Bindings[0].Compose, "stale_approval",
 			fmt.Sprintf("published port approval for %d/%s in group %s is unnecessary because those bindings are no longer duplicated", approval.Port, approval.Protocol, group),
-			"Remove the stale [[published_port]] approval from approvals.toml.")
+			"Remove the stale [[approvals.published_port]] approval from stacklint.toml.")
 	}
 	for _, approval := range approvals.Binds {
 		if !checked[approval.Compose] {
@@ -77,7 +77,7 @@ func checkStaleApprovals(cfg *config.Config, approvals *config.Approvals, combos
 		}
 		stale(approval.Compose, "stale_approval",
 			fmt.Sprintf("bind address approval for service %s is stale because the service no longer uses nonstandard host binding variables", approval.Service),
-			"Remove the [[bind_address]] approval from approvals.toml.")
+			"Remove the [[approvals.bind_address]] approval from stacklint.toml.")
 	}
 	for _, approval := range approvals.EnvFiles {
 		if !checked[approval.Compose] {
@@ -88,7 +88,7 @@ func checkStaleApprovals(cfg *config.Config, approvals *config.Approvals, combos
 		}
 		stale(approval.Compose, "stale_approval",
 			fmt.Sprintf("env_file approval for service %s and path %s is stale because the service no longer uses the approved project .env", approval.Service, approval.Path),
-			"Remove the stale [[env_file]] approval from approvals.toml.")
+			"Remove the stale [[approvals.env_file]] approval from stacklint.toml.")
 	}
 	return diagnostics
 }

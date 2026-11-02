@@ -1,9 +1,7 @@
 package images
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,52 +11,38 @@ import (
 	"github.com/YewFence/stacklint/internal/config"
 )
 
-// imagesPolicySnapshot is the part of stacklint.toml that steers images
-// digests; decoded leniently so unknown or renamed keys elsewhere in a
-// baseline config do not break the comparison.
+// imagesPolicySnapshot includes only policy relevant to images digests.
+// Other sections are decoded leniently so baseline schema changes do not
+// prevent comparison.
 type imagesPolicySnapshot struct {
-	Images config.ImagesConfig `toml:"images"`
+	Images    config.ImagesConfig `toml:"images"`
+	Approvals struct {
+		Images []config.ImageApproval `toml:"image"`
+	} `toml:"approvals"`
 }
 
-// imageApprovalsSnapshot is the part of approvals.toml that steers images
-// digests.
-type imageApprovalsSnapshot struct {
-	Image []config.ImageApproval `toml:"image"`
-}
-
-// PolicyChangedAtRef reports whether the images-relevant policy — the
-// [images] section of stacklint.toml and the [[image]] approvals — differs
-// between the current configuration directory and the materialized baseline
-// tree. The comparison is semantic (parsed TOML), so comments and reordering
-// do not trigger a full check. A baseline stacklint.toml that cannot be read
-// or parsed counts as changed.
+// PolicyChangedAtRef compares image policy and image approvals in the current
+// configuration with the materialized baseline. Unreadable baseline policy
+// counts as changed; unrelated sections and comments do not.
 func PolicyChangedAtRef(configDir, baselineRoot string) (bool, error) {
-	currentImages, err := decodeTOMLFile[imagesPolicySnapshot](filepath.Join(configDir, config.FileName), false)
+	current, err := decodeImagesPolicy(filepath.Join(configDir, config.FileName))
 	if err != nil {
 		return false, err
 	}
-	currentApprovals, err := decodeTOMLFile[imageApprovalsSnapshot](filepath.Join(configDir, config.ApprovalsFileName), true)
-	if err != nil {
-		return false, err
+	if _, err := os.Lstat(filepath.Join(baselineRoot, "approvals.toml")); !os.IsNotExist(err) {
+		return true, nil
 	}
-	baselineImages, err := decodeTOMLFile[imagesPolicySnapshot](filepath.Join(baselineRoot, config.FileName), false)
+	baseline, err := decodeImagesPolicy(filepath.Join(baselineRoot, config.FileName))
 	if err != nil {
 		return true, nil //nolint:nilerr // an unreadable baseline policy is uncomparable, hence changed
 	}
-	baselineApprovals, err := decodeTOMLFile[imageApprovalsSnapshot](filepath.Join(baselineRoot, config.ApprovalsFileName), true)
-	if err != nil {
-		return true, nil //nolint:nilerr // same as above
-	}
-	return !reflect.DeepEqual(currentImages, baselineImages) || !reflect.DeepEqual(currentApprovals, baselineApprovals), nil
+	return !reflect.DeepEqual(current, baseline), nil
 }
 
-func decodeTOMLFile[T any](path string, optional bool) (T, error) {
-	var snapshot T
+func decodeImagesPolicy(path string) (imagesPolicySnapshot, error) {
+	var snapshot imagesPolicySnapshot
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if optional && errors.Is(err, fs.ErrNotExist) {
-			return snapshot, nil
-		}
 		return snapshot, fmt.Errorf("read %s: %w", path, err)
 	}
 	if _, err := toml.Decode(string(data), &snapshot); err != nil {

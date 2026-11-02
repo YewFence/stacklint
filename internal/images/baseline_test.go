@@ -18,7 +18,7 @@ concurrency = 8
 `
 
 const baselineApprovals = `
-[[image]]
+[[approvals.image]]
 compose = "stacks/app/compose.yaml"
 service = "app"
 repository = "ghcr.io/example/app"
@@ -35,10 +35,8 @@ func writeFile(t *testing.T, dir, name, content string) {
 
 func TestPolicyChangedAtRefUnchanged(t *testing.T) {
 	current, baseline := t.TempDir(), t.TempDir()
-	writeFile(t, current, "stacklint.toml", baselineConfig)
-	writeFile(t, current, "approvals.toml", baselineApprovals)
-	writeFile(t, baseline, "stacklint.toml", "# comment shuffle\n"+baselineConfig)
-	writeFile(t, baseline, "approvals.toml", baselineApprovals+"\n# trailing comment\n")
+	writeFile(t, current, "stacklint.toml", baselineConfig+baselineApprovals)
+	writeFile(t, baseline, "stacklint.toml", "# comment shuffle\n"+baselineConfig+baselineApprovals+"\n# trailing comment\n")
 
 	changed, err := PolicyChangedAtRef(current, baseline)
 	require.NoError(t, err)
@@ -57,19 +55,18 @@ func TestPolicyChangedAtRefImagesSectionChanged(t *testing.T) {
 
 func TestPolicyChangedAtRefImageApprovalsChanged(t *testing.T) {
 	current, baseline := t.TempDir(), t.TempDir()
-	writeFile(t, current, "stacklint.toml", baselineConfig)
-	writeFile(t, current, "approvals.toml", baselineApprovals)
+	writeFile(t, current, "stacklint.toml", baselineConfig+baselineApprovals)
 	writeFile(t, baseline, "stacklint.toml", baselineConfig)
 
 	changed, err := PolicyChangedAtRef(current, baseline)
 	require.NoError(t, err)
-	require.True(t, changed, "a removed [[image]] approval must trigger a full check")
+	require.True(t, changed, "a removed [[approvals.image]] approval must trigger a full check")
 }
 
 func TestPolicyChangedAtRefIgnoresUnrelatedSections(t *testing.T) {
 	current, baseline := t.TempDir(), t.TempDir()
 	writeFile(t, current, "stacklint.toml", baselineConfig)
-	writeFile(t, baseline, "stacklint.toml", baselineConfig+"\n[ports]\nshared_roots = [\"stacks\"]\n")
+	writeFile(t, baseline, "stacklint.toml", baselineConfig+"\n[ports]\nshared_roots = [\"stacks\"]\n[[approvals.env_exemption]]\nstack = 'stacks/app'\nkind = 'pending'\n")
 
 	changed, err := PolicyChangedAtRef(current, baseline)
 	require.NoError(t, err)
@@ -83,6 +80,17 @@ func TestPolicyChangedAtRefMissingBaselineConfigCountsAsChanged(t *testing.T) {
 	changed, err := PolicyChangedAtRef(current, baseline)
 	require.NoError(t, err)
 	require.True(t, changed)
+}
+
+func TestPolicyChangedAtRefLegacyApprovalsCountsAsChanged(t *testing.T) {
+	current, baseline := t.TempDir(), t.TempDir()
+	writeFile(t, current, "stacklint.toml", baselineConfig)
+	writeFile(t, baseline, "stacklint.toml", baselineConfig)
+	writeFile(t, baseline, "approvals.toml", "[[image]]\ncompose = 'stacks/app/compose.yaml'\n")
+
+	changed, err := PolicyChangedAtRef(current, baseline)
+	require.NoError(t, err)
+	require.True(t, changed, "legacy approval policy must force a full check")
 }
 
 func TestPolicyChangedAtRefMissingCurrentConfigFails(t *testing.T) {

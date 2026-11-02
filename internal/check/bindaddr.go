@@ -11,7 +11,7 @@ import (
 // checkBindAddress reads host IP interpolation variables from the
 // uninterpolated view's port declarations (short syntax prefix or long syntax
 // host_ip). Only the configured default variable is allowed without an
-// approval; other variables need a [[bind_address]] approval whose variable
+// approval; other variables need a [[approvals.bind_address]] approval whose variable
 // set matches exactly.
 func checkBindAddress(c *ruleContext) []Diagnostic {
 	services, ok := c.render.Raw["services"].(map[string]any)
@@ -49,14 +49,14 @@ func checkBindAddress(c *ruleContext) []Diagnostic {
 		if approval == nil {
 			diagnostics = append(diagnostics, c.diagnose("bind_address", serviceName,
 				fmt.Sprintf("service %s binds host IP with %s instead of %s", serviceName, formatVariables(nonstandard), defaultVariable),
-				fmt.Sprintf("Use %s, or add a [[bind_address]] approval with the exact variables and a reason in approvals.toml.", defaultVariable)))
+				fmt.Sprintf("Use %s, or add a [[approvals.bind_address]] approval with the exact variables and a reason in stacklint.toml.", defaultVariable)))
 			continue
 		}
 		c.reviewed.binds[bindKey(compose, serviceName)] = true
 		if !equalStringSets(nonstandard, approval.Variables) {
 			diagnostics = append(diagnostics, c.diagnose("bind_address", serviceName,
-				fmt.Sprintf("service %s binds host IP with %s instead of %s; existing [[bind_address]] approval permits %s", serviceName, formatVariables(nonstandard), defaultVariable, strings.Join(sortedStrings(approval.Variables), ", ")),
-				"Update the approval in approvals.toml after reviewing the changed variables."))
+				fmt.Sprintf("service %s binds host IP with %s instead of %s; existing [[approvals.bind_address]] approval permits %s", serviceName, formatVariables(nonstandard), defaultVariable, strings.Join(sortedStrings(approval.Variables), ", ")),
+				"Update the approval in stacklint.toml after reviewing the changed variables."))
 		}
 	}
 	return diagnostics

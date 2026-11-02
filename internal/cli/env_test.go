@@ -13,6 +13,14 @@ import (
 
 func writeEnvFile(t *testing.T, root, path, content string) string {
 	t.Helper()
+	if path == "stacklint.toml" && strings.HasPrefix(content, "[[approvals.") {
+		existing, err := os.ReadFile(filepath.Join(root, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		policy, _, _ := strings.Cut(string(existing), "[[approvals.")
+		content = policy + content
+	}
 	path = filepath.Join(root, path)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -165,7 +173,7 @@ func TestEnvExemptions(t *testing.T) {
 			if kind == "upstream" {
 				extra += "source = \"https://example.invalid/template\"\n"
 			}
-			writeEnvFile(t, root, "approvals.toml", "[[env_exemption]]\nstack = \"stacks/app\"\nkind = \""+kind+"\"\n"+extra)
+			writeEnvFile(t, root, "stacklint.toml", "[[approvals.env_exemption]]\nstack = \"stacks/app\"\nkind = \""+kind+"\"\n"+extra)
 			if kind == "env-file-passthrough" {
 				writeEnvFile(t, root, "stacks/app/compose.yaml", "name: app\nservices:\n  app:\n    image: busybox\n    env_file: .env\n")
 			}
@@ -189,7 +197,7 @@ func TestEnvExemptions(t *testing.T) {
 
 func TestStaleEnvExemptionsRespectScope(t *testing.T) {
 	root := repository(t)
-	writeEnvFile(t, root, "approvals.toml", "[[env_exemption]]\nstack = \"stacks/missing\"\nkind = \"pending\"\n")
+	writeEnvFile(t, root, "stacklint.toml", "[[approvals.env_exemption]]\nstack = \"stacks/missing\"\nkind = \"pending\"\n")
 	code, output := executeEnv(t, root, "generate", "app")
 	if code != 0 {
 		t.Fatalf("unrelated stale exemption blocks local generation: %d %s", code, output)
@@ -202,7 +210,7 @@ func TestStaleEnvExemptionsRespectScope(t *testing.T) {
 	if code != 1 || !bytes.Contains(output, []byte("env.exemption-stale")) {
 		t.Fatalf("stale target not detected: %d %s", code, output)
 	}
-	writeEnvFile(t, root, "approvals.toml", "[[env_exemption]]\nstack = \"stacks/app\"\nkind = \"env-file-passthrough\"\nreason = \"passthrough interface\"\n")
+	writeEnvFile(t, root, "stacklint.toml", "[[approvals.env_exemption]]\nstack = \"stacks/app\"\nkind = \"env-file-passthrough\"\nreason = \"passthrough interface\"\n")
 	writeEnvFile(t, root, "stacks/app/.env.example", "manual\n")
 	code, output = executeEnv(t, root, "check", "app", "--format", "json")
 	if code != 1 || !bytes.Contains(output, []byte("no service-level")) {
@@ -235,7 +243,7 @@ func TestSymlinkOutputNotReadOrReplaced(t *testing.T) {
 func TestEnvGenerateFullRunSkipsExemptStacks(t *testing.T) {
 	root := repository(t)
 	writeEnvFile(t, root, "stacks/exempt/compose.yaml", "name: exempt\nservices:\n  app:\n    image: busybox\n    environment:\n      VALUE: ${VALUE:-one}\n")
-	writeEnvFile(t, root, "approvals.toml", "[[env_exemption]]\nstack = \"stacks/exempt\"\nkind = \"pending\"\n")
+	writeEnvFile(t, root, "stacklint.toml", "[[approvals.env_exemption]]\nstack = \"stacks/exempt\"\nkind = \"pending\"\n")
 	writeEnvFile(t, root, "stacks/exempt/.env.example", "hand-maintained content\n")
 
 	code, output := executeEnv(t, root, "generate", "--format", "json")

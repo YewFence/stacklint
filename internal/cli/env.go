@@ -67,7 +67,7 @@ func newEnvCommand() *cobra.Command {
 				}
 				report, err := runEnv(cmd, action, args, variant)
 				if err != nil {
-					report = envReport{Results: []envStatus{}, Diagnostics: []envDiagnostic{{Severity: "error", Rule: "env.configuration", Message: err.Error(), Hint: "Check stacklint.toml, approvals.toml and target selection."}}, ExitCode: 2}
+					report = envReport{Results: []envStatus{}, Diagnostics: []envDiagnostic{{Severity: "error", Rule: "env.configuration", Message: err.Error(), Hint: "Check stacklint.toml and target selection."}}, ExitCode: 2}
 				}
 				if err := printEnvReport(cmd, report, format); err != nil {
 					return err
@@ -104,7 +104,7 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 	if err != nil {
 		return report, err
 	}
-	exemptions, err := config.LoadEnvExemptions(dir)
+	exemptions, err := cfg.EnvExemptions()
 	if err != nil {
 		return report, err
 	}
@@ -141,7 +141,7 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 		}
 		for _, stack := range sortedEnvKeys(exemptions) {
 			if !known[stack] {
-				report.failure(1, stack, "", "env.exemption-stale", "exemption target no longer exists", "Remove the stale [[env_exemption]] from approvals.toml.")
+				report.failure(1, stack, "", "env.exemption-stale", "exemption target no longer exists", "Remove the stale [[approvals.env_exemption]] from stacklint.toml.")
 			}
 		}
 	}
@@ -172,7 +172,7 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 		if exemption, exists := exemptions[stack]; exists {
 			status.Status = "exempt"
 			if action == "generate" && len(args) > 0 {
-				report.failure(2, stack, target.Variant, "env.exempt", "refusing to generate an exempt stack", "Remove its [[env_exemption]] before generating.")
+				report.failure(2, stack, target.Variant, "env.exempt", "refusing to generate an exempt stack", "Remove its [[approvals.env_exemption]] before generating.")
 				status.Status = "error"
 			} else if envtemplate.Generated(output) {
 				report.failure(1, stack, target.Variant, "env.exemption-generated", "exempt template carries a generated header", "Remove the exemption or restore a hand-maintained template.")
@@ -184,7 +184,7 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 					report.failure(2, stack, target.Variant, "env.analysis", err.Error(), "Check the registered Compose combination and static inputs.")
 					status.Status = "error"
 				} else if !passthrough {
-					report.failure(1, stack, target.Variant, "env.exemption-stale", "env-file-passthrough exemption has no service-level project .env reference", "Remove or update the stack's [[env_exemption]].")
+					report.failure(1, stack, target.Variant, "env.exemption-stale", "env-file-passthrough exemption has no service-level project .env reference", "Remove or update the stack's [[approvals.env_exemption]].")
 					status.Status = "error"
 				}
 			}
@@ -206,7 +206,7 @@ func runEnv(cmd *cobra.Command, action string, args []string, variant string) (e
 			status.Status = "prepared"
 		} else if !bytes.Equal(output, result.Content) {
 			status.Status = "drift"
-			report.failure(1, stack, target.Variant, "env.drift", "template is missing or differs from generated content", "Run stacklint env generate "+stack+" --variant "+target.Variant+" or record an explicit [[env_exemption]].")
+			report.failure(1, stack, target.Variant, "env.drift", "template is missing or differs from generated content", "Run stacklint env generate "+stack+" --variant "+target.Variant+" or record an explicit [[approvals.env_exemption]].")
 		} else {
 			status.Status = "ok"
 		}

@@ -17,7 +17,7 @@ var (
 	majorMinorTagRe = regexp.MustCompile(`^v?\d+\.\d+(?:-(?P<suffix>[0-9A-Za-z][0-9A-Za-z._-]*))?$`)
 )
 
-// ApprovalRules are the valid [[image]] approval rules.
+// ApprovalRules are the valid [[approvals.image]] approval rules.
 var ApprovalRules = []string{"exact-tag", "floating-tag", "major", "major-minor"}
 
 // Reference is a parsed image reference.
@@ -83,7 +83,7 @@ func Registry(repository string) string {
 	return reference.Domain(named)
 }
 
-// Approval is a validated [[image]] approval entry.
+// Approval is a validated [[approvals.image]] approval entry.
 type Approval struct {
 	Repository string
 	Rule       string
