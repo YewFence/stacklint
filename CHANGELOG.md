@@ -1,3 +1,9 @@
+## What's Changed in 0.8.1
+* chore(gomod-deps): update module golang.org/x/net to v0.62.0 by @renovate[bot] in [#33](https://github.com/YewFence/stacklint/pull/33)
+* chore(mise-deps): update node.js to 26 by @renovate[bot] in [#34](https://github.com/YewFence/stacklint/pull/34)
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.8.0...v0.8.1
+
 ## What's Changed in 0.8.0
 * model mutually exclusive alternative stacks by @YewFence
 * consolidate approvals into stacklint.toml by @YewFence
