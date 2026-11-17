@@ -1,3 +1,11 @@
+## What's Changed in 0.8.2
+* chore(mise-deps): update mise tools by @renovate[bot] in [#38](https://github.com/YewFence/stacklint/pull/38)
+* ci(deps): update github actions to v5.2.8 by @renovate[bot] in [#39](https://github.com/YewFence/stacklint/pull/39)
+* chore(gomod-deps): update go modules by @renovate[bot] in [#40](https://github.com/YewFence/stacklint/pull/40)
+* chore(go-deps): update go module directive to v1.27.4 by @renovate[bot] in [#41](https://github.com/YewFence/stacklint/pull/41)
+
+**Full Changelog**: https://github.com/YewFence/stacklint/compare/v0.8.1...v0.8.2
+
 ## What's Changed in 0.8.1
 * chore(gomod-deps): update module golang.org/x/net to v0.62.0 by @renovate[bot] in [#33](https://github.com/YewFence/stacklint/pull/33)
 * chore(mise-deps): update node.js to 26 by @renovate[bot] in [#34](https://github.com/YewFence/stacklint/pull/34)
